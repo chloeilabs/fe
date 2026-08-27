@@ -161,7 +161,7 @@ export function projectSimplex(v: Vector): Vector {
 export function jacobiEigen(A: Matrix, maxIter = 80): { values: Vector; vectors: Matrix } {
   const n = A.length;
   const S = clone(A);
-  let V = identity(n);
+  const V = identity(n);
   for (let iter = 0; iter < maxIter; iter++) {
     let p = 0;
     let q = 1;

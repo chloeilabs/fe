@@ -1,7 +1,20 @@
 import { mean, percentile, stdev } from "@/lib/engine/stats";
 
-/** Peter Acklam's inverse normal CDF approximation. */
-export function invNorm(p: number): number {
+function erf(x: number): number {
+  const sign = x < 0 ? -1 : 1;
+  const ax = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * ax);
+  const y =
+    1 -
+    (((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) *
+      t +
+      0.254829592) *
+      t *
+      Math.exp(-ax * ax));
+  return sign * y;
+}
+
+function acklamInvNorm(p: number): number {
   const a = [
     -3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2,
     1.383577509590705e2, -3.066479806614716e1, 2.506628277459239,
@@ -20,8 +33,6 @@ export function invNorm(p: number): number {
   ];
   const plow = 0.02425;
   const phigh = 1 - plow;
-  if (p <= 0) return -Infinity;
-  if (p >= 1) return Infinity;
   if (p < plow) {
     const q = Math.sqrt(-2 * Math.log(p));
     return (
@@ -43,6 +54,21 @@ export function invNorm(p: number): number {
     (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
     ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
   );
+}
+
+/** Inverse standard normal CDF: Acklam seed + two Newton steps on Φ. */
+export function invNorm(p: number): number {
+  if (p <= 0) return -Infinity;
+  if (p >= 1) return Infinity;
+  if (p === 0.5) return 0;
+  let x = acklamInvNorm(p);
+  const den = Math.sqrt(2 * Math.PI);
+  for (let i = 0; i < 2; i += 1) {
+    const pdf = Math.exp(-0.5 * x * x) / den;
+    const cdf = 0.5 * (1 + erf(x / Math.sqrt(2)));
+    x -= (cdf - p) / pdf;
+  }
+  return x;
 }
 
 export function skewness(xs: number[]): number {

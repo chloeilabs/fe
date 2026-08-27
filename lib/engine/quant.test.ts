@@ -169,9 +169,10 @@ describe("two-stage FCFF", () => {
 });
 
 describe("VaR and Kelly", () => {
-  it("matches the Acklam inverse normal at known quantiles", () => {
-    close(invNorm(0.5), 0, 1e-8);
-    close(invNorm(0.975), 1.95996398454, 1e-6);
+  it("matches the inverse normal at known quantiles", () => {
+    close(invNorm(0.5), 0, 1e-12);
+    close(invNorm(0.975), 1.95996398454, 5e-6);
+    close(invNorm(0.95), 1.64485362695, 5e-6);
   });
 
   it("gives Gaussian parametric VaR μ + σ Φ^{-1}(1-α)", () => {

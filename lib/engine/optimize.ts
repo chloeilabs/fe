@@ -69,7 +69,6 @@ export function maxSharpe(
   rf = 0,
   longOnly = false,
 ): number[] {
-  const n = mu.length;
   const excess = mu.map((m) => m - rf);
   let w = solveSPD(cov, excess);
   const sum = w.reduce((s, v) => s + v, 0);
@@ -186,7 +185,7 @@ export function longOnlyFrontier(
     const target = gmvMu + ((maxMu - gmvMu) * i) / Math.max(points - 1, 1);
     const w = minVarAtReturn(mu, cov, target);
     const m = portfolioMoments(w, mu, cov, rf);
-    out.push({ target, weights: w, ...m });
+    out.push({ target, weights: w, ret: m.expectedReturn, vol: m.volatility, sharpe: m.sharpe });
   }
   return out;
 }
