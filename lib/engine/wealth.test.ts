@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
+import { money } from "../format";
 import { fireNumber, futureValue, monteCarloProjection, requiredMonthlyContribution, yearsToTarget } from "./wealth";
+
+describe("money format", () => {
+  it("uses a stable compact suffix instead of locale compact notation", () => {
+    expect(money(1_800_000, true)).toBe("$1.80M");
+    expect(money(2_142, false)).toBe("$2,142.00");
+  });
+});
+
 
 describe("wealth engine", () => {
   it("compounds a lump sum with monthly contributions", () => {

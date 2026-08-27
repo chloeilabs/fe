@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ASSET_CLASS_LABELS, classWeights, type AssetClass } from "@/lib/engine/allocation";
 import { fireNumber, futureValue, yearsToTarget } from "@/lib/engine/wealth";
 import { money, num } from "@/lib/format";
+import { ClientOnly } from "@/lib/hooks/use-mounted";
 import { useQuotes } from "@/lib/hooks/use-quotes";
 import { usePortfolio } from "@/lib/portfolio/store";
 
@@ -138,6 +139,7 @@ export function DashboardView() {
             </CardHeader>
             <CardContent className="flex items-center gap-4">
               <div className="h-40 w-40">
+                <ClientOnly fallback={<div className="h-40 w-40 rounded-full bg-muted/40" />}>
                 <ResponsiveContainer initialDimension={{ width: 160, height: 160 }}>
                   <PieChart>
                     <Pie data={pie} dataKey="value" nameKey="name" innerRadius={42} outerRadius={70} stroke="none">
@@ -147,6 +149,7 @@ export function DashboardView() {
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
+                </ClientOnly>
               </div>
               <ul className="space-y-1 text-sm">
                 {pie.map((p, i) => (

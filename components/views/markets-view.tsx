@@ -7,6 +7,7 @@ import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recha
 import { DeltaFromPercent } from "@/components/delta";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchFmp } from "@/lib/fmp/browser";
+import { ClientOnly } from "@/lib/hooks/use-mounted";
 import type { FmpHours, FmpMover, FmpQuote, FmpSector, FmpTreasury } from "@/lib/fmp/types";
 import { money, num } from "@/lib/format";
 import { useQuotes } from "@/lib/hooks/use-quotes";
@@ -98,6 +99,7 @@ export function MarketsView() {
             <CardDescription>{treasury?.date}</CardDescription>
           </CardHeader>
           <CardContent className="h-56">
+            <ClientOnly fallback={<div className="h-full rounded-lg bg-muted/30" />}>
             <ResponsiveContainer initialDimension={{ width: 480, height: 220 }}>
               <BarChart data={curve}>
                 <XAxis dataKey="tenor" />
@@ -106,6 +108,7 @@ export function MarketsView() {
                 <Bar dataKey="yield" fill="#d4b483" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            </ClientOnly>
           </CardContent>
         </Card>
       </div>

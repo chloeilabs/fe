@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { fetchFmp } from "@/lib/fmp/browser";
+import { ClientOnly } from "@/lib/hooks/use-mounted";
 import type {
   FmpDcf,
   FmpIncome,
@@ -134,6 +135,7 @@ export function ResearchView({ symbol }: { symbol: string }) {
 
       <Card className="h-72">
         <CardContent className="h-full pt-4">
+          <ClientOnly fallback={<div className="h-full rounded-lg bg-muted/30" />}>
           <ResponsiveContainer initialDimension={{ width: 800, height: 260 }}>
             <LineChart data={chart}>
               <XAxis dataKey="date" hide />
@@ -142,6 +144,7 @@ export function ResearchView({ symbol }: { symbol: string }) {
               <Line type="monotone" dataKey="price" stroke="#d4b483" dot={false} strokeWidth={1.6} />
             </LineChart>
           </ResponsiveContainer>
+          </ClientOnly>
         </CardContent>
       </Card>
 
@@ -234,8 +237,8 @@ export function ResearchView({ symbol }: { symbol: string }) {
             <CardTitle>News</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {news.map((item) => (
-              <a key={item.url ?? item.title} href={item.url} target="_blank" rel="noreferrer" className="block hover:text-primary">
+            {news.map((item, index) => (
+              <a key={`${item.url ?? item.title}-${index}`} href={item.url} target="_blank" rel="noreferrer" className="block hover:text-primary">
                 <div className="text-sm">{item.title}</div>
                 <div className="text-xs text-muted-foreground">
                   {item.publisher} · {item.publishedDate}

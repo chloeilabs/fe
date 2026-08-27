@@ -85,8 +85,13 @@ function fromSample(path: AllowedFmpPath, params: Record<string, string>): unkno
       return [sampleTreasury()];
     case "news/stock-latest":
       return sampleNews();
-    case "news/stock":
-      return sampleNews(params.symbols ?? symbol);
+    case "news/stock": {
+      const list = (params.symbols ?? symbol ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      return list.flatMap((s) => sampleNews(s)).slice(0, 16);
+    }
     case "exchange-market-hours":
       return [sampleHours()];
     case "stock-price-change":

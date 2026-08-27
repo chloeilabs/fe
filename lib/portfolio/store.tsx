@@ -77,9 +77,17 @@ type PortfolioContextValue = {
 const PortfolioContext = createContext<PortfolioContextValue | null>(null);
 
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
+  const canUseClientStore = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const raw = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  const state = useMemo(() => parseState(raw), [raw]);
-  const ready = true;
+  const state = useMemo(
+    () => parseState(canUseClientStore ? raw : ""),
+    [canUseClientStore, raw],
+  );
+  const ready = canUseClientStore;
 
   const replaceAll = useCallback((next: PortfolioState) => {
     writeState(next);

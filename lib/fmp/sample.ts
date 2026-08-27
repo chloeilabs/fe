@@ -231,7 +231,7 @@ export function sampleNews(symbol?: string): FmpNews[] {
     publisher: "Compound Desk",
     title: `${s} sample headline — live FMP news appears after you add an API key`,
     text: "This is sample market copy used when FMP_API_KEY is not set.",
-    url: "https://site.financialmodelingprep.com/api-docs.md",
+    url: `https://site.financialmodelingprep.com/api-docs.md#${s}`,
     site: "financialmodelingprep.com",
   }));
 }

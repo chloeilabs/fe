@@ -44,8 +44,8 @@ function NewsCard({ title, items }: { title: string; items: FmpNews[] }) {
         <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {items.map((item) => (
-          <article key={item.url ?? item.title}>
+        {items.map((item, index) => (
+          <article key={`${item.symbol ?? "mkt"}-${item.url ?? item.title}-${index}`}>
             <a href={item.url} target="_blank" rel="noreferrer" className="text-sm hover:text-primary">
               {item.title}
             </a>

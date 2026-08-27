@@ -25,6 +25,7 @@ import {
   yearsToTarget,
 } from "@/lib/engine/wealth";
 import { money, num, pct } from "@/lib/format";
+import { ClientOnly } from "@/lib/hooks/use-mounted";
 import { useQuotes } from "@/lib/hooks/use-quotes";
 import { usePortfolio } from "@/lib/portfolio/store";
 import type { GoalPlan } from "@/lib/portfolio/types";
@@ -159,6 +160,7 @@ export function PlannerView() {
             </CardDescription>
           </CardHeader>
           <CardContent className="h-80">
+            <ClientOnly fallback={<div className="h-full rounded-lg bg-muted/30" />}>
             <ResponsiveContainer initialDimension={{ width: 640, height: 280 }}>
               <AreaChart data={chart}>
                 <CartesianGrid strokeOpacity={0.12} />
@@ -170,6 +172,7 @@ export function PlannerView() {
                 <Area type="monotone" dataKey="p50" stroke="#d4b483" fill="#d4b483" fillOpacity={0.25} />
               </AreaChart>
             </ResponsiveContainer>
+            </ClientOnly>
           </CardContent>
         </Card>
       </div>
