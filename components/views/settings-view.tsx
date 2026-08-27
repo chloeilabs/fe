@@ -57,7 +57,7 @@ export function SettingsView() {
       <Card>
         <CardHeader>
           <CardTitle>Import / export book</CardTitle>
-          <CardDescription>Holdings, cash, targets, and plan assumptions are local JSON. Nothing is sent to FMP except tickers you look up.</CardDescription>
+          <CardDescription>Holdings, cash, and watchlist are local JSON. Nothing is sent to FMP except tickers you look up.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <Textarea className="min-h-64 font-mono text-xs" value={draft ?? bookJson} onChange={(e) => setDraft(e.target.value)} />

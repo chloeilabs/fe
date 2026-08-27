@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  sampleCashFlow,
   sampleDcf,
   sampleHistory,
   sampleHours,
@@ -100,6 +101,8 @@ function fromSample(path: AllowedFmpPath, params: Record<string, string>): unkno
       return symbol ? samplePeers(symbol) : [];
     case "income-statement":
       return symbol ? sampleIncome(symbol) : [];
+    case "cash-flow-statement":
+      return symbol ? sampleCashFlow(symbol) : [];
     case "dividends":
       return [];
     case "economic-indicators":

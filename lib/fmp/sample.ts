@@ -1,6 +1,7 @@
 import { mulberry32 } from "@/lib/engine/stats";
 import type {
   FmpDcf,
+  FmpCashFlow,
   FmpHours,
   FmpIncome,
   FmpLightBar,
@@ -197,6 +198,7 @@ export function sampleMetrics(symbol: string): FmpMetricsTtm | null {
     returnOnInvestedCapitalTTM: spec.etf ? 0.12 : 0.5,
     earningsYieldTTM: 0.025,
     freeCashFlowYieldTTM: 0.026,
+    freeCashFlowToFirmTTM: (spec.cap ?? 0) * 0.028,
     grahamNumberTTM: spec.price * 0.11,
   };
 }
@@ -325,6 +327,22 @@ export function sampleIncome(symbol: string): FmpIncome[] {
     eps: 6.4 - i * 0.3,
     ebitda: 130e9 * (1 - i * 0.04),
     operatingIncome: 120e9 * (1 - i * 0.05),
+    weightedAverageShsOut: spec.cap && spec.price ? spec.cap / spec.price : 1e9,
+  }));
+}
+
+export function sampleCashFlow(symbol: string): FmpCashFlow[] {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return [];
+  const fcf = (spec.cap ?? 0) * 0.026;
+  return [2025, 2024, 2023].map((year, i) => ({
+    symbol: symbol.toUpperCase(),
+    date: `${year}-09-27`,
+    fiscalYear: String(year),
+    period: "FY",
+    freeCashFlow: fcf * (1 - i * 0.04),
+    operatingCashFlow: fcf * 1.35 * (1 - i * 0.04),
+    capitalExpenditure: -fcf * 0.35,
   }));
 }
 

@@ -24,7 +24,7 @@ const instrument = Instrument_Serif({
 export const metadata: Metadata = {
   title: "Compound — personal wealth desk",
   description:
-    "A financial engineering app for personal wealth growth: live FMP market data, portfolio tracking, FIRE planning, screening, and risk analytics.",
+    "A quantitative financial-engineering desk on Financial Modeling Prep: mean-variance, risk parity, VaR, CAPM, PCA, and two-stage FCFF.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

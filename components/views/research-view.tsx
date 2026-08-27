@@ -10,10 +10,14 @@ import { SymbolSearch } from "@/components/symbol-search";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { fetchFmp } from "@/lib/fmp/browser";
 import { ClientOnly } from "@/lib/hooks/use-mounted";
+import { twoStageFcff, waccFromCapm } from "@/lib/engine/dcf";
 import type {
+  FmpCashFlow,
   FmpDcf,
   FmpIncome,
   FmpLightBar,
@@ -36,7 +40,7 @@ export function ResearchHome() {
         <p className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">Research</p>
         <h1 className="font-heading text-4xl tracking-tight">Look through the security</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Quotes, DCF, TTM ratios, Altman/Piotroski scores, filings-grade financials, and news — all from FMP stable endpoints.
+          Quotes, two-stage FCFF, TTM ratios, scores, and filings-grade financials from FMP stable endpoints.
         </p>
       </header>
       <SymbolSearch autoFocus />
@@ -55,16 +59,26 @@ export function ResearchView({ symbol }: { symbol: string }) {
   const [metrics, setMetrics] = useState<FmpMetricsTtm | null>(null);
   const [scores, setScores] = useState<FmpScore | null>(null);
   const [income, setIncome] = useState<FmpIncome[]>([]);
+  const [cashFlow, setCashFlow] = useState<FmpCashFlow[]>([]);
   const [news, setNews] = useState<FmpNews[]>([]);
   const [peers, setPeers] = useState<FmpPeer[]>([]);
   const [change, setChange] = useState<FmpPriceChange | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dcfInputs, setDcfInputs] = useState({
+    gHigh: 8,
+    gStable: 2.5,
+    years: 5,
+    erp: 5,
+    rf: 4.3,
+    kd: 5,
+    tax: 21,
+  });
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const [q, p, h, d, r, m, s, inc, n, pr, ch] = await Promise.all([
+        const [q, p, h, d, r, m, s, inc, cf, n, pr, ch] = await Promise.all([
           fetchFmp<FmpQuote[]>("quote", { symbol }),
           fetchFmp<FmpProfile[]>("profile", { symbol }),
           fetchFmp<FmpLightBar[]>("historical-price-eod/light", { symbol }),
@@ -73,6 +87,7 @@ export function ResearchView({ symbol }: { symbol: string }) {
           fetchFmp<FmpMetricsTtm[]>("key-metrics-ttm", { symbol }),
           fetchFmp<FmpScore[]>("financial-scores", { symbol }),
           fetchFmp<FmpIncome[]>("income-statement", { symbol, period: "annual", limit: 5 }),
+          fetchFmp<FmpCashFlow[]>("cash-flow-statement", { symbol, period: "annual", limit: 5 }),
           fetchFmp<FmpNews[]>("news/stock", { symbols: symbol, limit: 8 }),
           fetchFmp<FmpPeer[]>("stock-peers", { symbol }),
           fetchFmp<FmpPriceChange[]>("stock-price-change", { symbol }),
@@ -86,6 +101,7 @@ export function ResearchView({ symbol }: { symbol: string }) {
         setMetrics(m.data?.[0] ?? null);
         setScores(s.data?.[0] ?? null);
         setIncome(inc.data ?? []);
+        setCashFlow(cf.data ?? []);
         setNews(n.data ?? []);
         setPeers(Array.isArray(pr.data) ? pr.data : []);
         setChange(ch.data?.[0] ?? null);
@@ -104,6 +120,37 @@ export function ResearchView({ symbol }: { symbol: string }) {
   const intrinsic = dcf?.dcf ?? 0;
   const mos = intrinsic && price ? intrinsic / price - 1 : null;
   const chart = history.slice(-180).map((b) => ({ date: b.date.slice(5), price: b.price }));
+  const fcff =
+    Number(metrics?.freeCashFlowToFirmTTM) ||
+    cashFlow[0]?.freeCashFlow ||
+    0;
+  const sharesOut =
+    income[0]?.weightedAverageShsOut ||
+    (metrics?.marketCap && price ? Number(metrics.marketCap) / price : 0);
+  const ev = Number(metrics?.enterpriseValueTTM) || 0;
+  const mcap = Number(metrics?.marketCap) || 0;
+  const netDebt = ev && mcap ? ev - mcap : 0;
+  const equityWeight = ev > 0 ? mcap / ev : 1;
+  const wacc = waccFromCapm({
+    rf: dcfInputs.rf / 100,
+    beta: profile?.beta ?? 1,
+    erp: dcfInputs.erp / 100,
+    costDebt: dcfInputs.kd / 100,
+    taxRate: dcfInputs.tax / 100,
+    equityWeight,
+  });
+  const modelDcf = fcff
+    ? twoStageFcff({
+        fcff,
+        shares: sharesOut || 1,
+        netDebt,
+        growthHigh: dcfInputs.gHigh / 100,
+        growthStable: dcfInputs.gStable / 100,
+        yearsHigh: dcfInputs.years,
+        wacc,
+      })
+    : null;
+  const modelMos = modelDcf && price ? modelDcf.perShare / price - 1 : null;
 
   return (
     <div className="space-y-6">
@@ -150,10 +197,93 @@ export function ResearchView({ symbol }: { symbol: string }) {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="FMP DCF" value={money(intrinsic)} hint={mos == null ? "—" : `${mos >= 0 ? "Discount" : "Premium"} ${pct(Math.abs(mos), false)}`} />
+        <Stat
+          label="Two-stage FCFF"
+          value={money(modelDcf?.perShare)}
+          hint={modelMos == null ? "—" : `${modelMos >= 0 ? "Discount" : "Premium"} ${pct(Math.abs(modelMos), false)} vs last`}
+        />
         <Stat label="P/E TTM" value={num(Number(ratios?.priceToEarningsRatioTTM), 1)} hint={`FCF yield ${pct(Number(metrics?.freeCashFlowYieldTTM) || 0, false)}`} />
-        <Stat label="ROIC TTM" value={pct(Number(metrics?.returnOnInvestedCapitalTTM) || 0, false)} hint={`ROE ${pct(Number(metrics?.returnOnEquityTTM) || Number(ratios?.returnOnEquityTTM) || 0, false)}`} />
         <Stat label="Scores" value={`Z ${num(scores?.altmanZScore, 1)}`} hint={`Piotroski ${scores?.piotroskiScore ?? "—"}`} />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Two-stage FCFF</CardTitle>
+          <CardDescription>
+            Explicit growth for {dcfInputs.years} years, then Gordon on FCFF<sub>n+1</sub>. WACC blends CAPM cost of
+            equity with after-tax debt. Compare to FMP&apos;s published DCF.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="grid grid-cols-2 gap-3">
+            {(
+              [
+                ["gHigh", "High growth %"],
+                ["gStable", "Stable growth %"],
+                ["years", "Stage-1 years"],
+                ["erp", "ERP %"],
+                ["rf", "r_f %"],
+                ["kd", "Cost of debt %"],
+                ["tax", "Tax %"],
+              ] as const
+            ).map(([key, label]) => (
+              <div key={key}>
+                <Label htmlFor={`dcf-${key}`}>{label}</Label>
+                <Input
+                  id={`dcf-${key}`}
+                  type="number"
+                  step="any"
+                  value={dcfInputs[key]}
+                  onChange={(e) =>
+                    setDcfInputs((prev) => ({ ...prev, [key]: Number(e.target.value) }))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">FCFF</span>
+              <span className="font-mono">{money(fcff, true)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Net debt (EV − mkt cap)</span>
+              <span className="font-mono">{money(netDebt, true)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">WACC</span>
+              <span className="font-mono">{pct(wacc, false)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">PV explicit + PV terminal</span>
+              <span className="font-mono">
+                {money(modelDcf?.pvExplicit, true)} + {money(modelDcf?.pvTerminal, true)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Enterprise / equity</span>
+              <span className="font-mono">
+                {money(modelDcf?.enterpriseValue, true)} / {money(modelDcf?.equityValue, true)}
+              </span>
+            </div>
+            <div className="flex justify-between font-medium">
+              <span>Value / share</span>
+              <span className="font-mono">{money(modelDcf?.perShare)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">FMP DCF / last price</span>
+              <span className="font-mono">
+                {money(intrinsic)} / {money(price)}
+              </span>
+            </div>
+            {profile?.isEtf ? (
+              <p className="text-xs text-muted-foreground">
+                ETF cash-flow DCF is a diagnostic, not an operating-company model.
+              </p>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

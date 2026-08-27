@@ -219,8 +219,20 @@ export type FmpMetricsTtm = {
   returnOnInvestedCapitalTTM?: number;
   earningsYieldTTM?: number;
   freeCashFlowYieldTTM?: number;
+  freeCashFlowToFirmTTM?: number;
   grahamNumberTTM?: number;
   [key: string]: string | number | undefined;
+};
+
+export type FmpCashFlow = {
+  symbol: string;
+  date?: string;
+  fiscalYear?: string;
+  period?: string;
+  freeCashFlow?: number;
+  operatingCashFlow?: number;
+  capitalExpenditure?: number;
+  interestExpense?: number;
 };
 
 export const ALLOWED_FMP_PATHS = [
@@ -247,6 +259,7 @@ export const ALLOWED_FMP_PATHS = [
   "stock-price-change",
   "stock-peers",
   "income-statement",
+  "cash-flow-statement",
   "dividends",
   "economic-indicators",
 ] as const;

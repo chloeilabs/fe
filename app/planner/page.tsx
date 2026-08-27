@@ -1,5 +1,5 @@
-import { PlannerView } from "@/components/views/planner-view";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <PlannerView />;
+  redirect("/optimize");
 }

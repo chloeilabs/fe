@@ -10,8 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ASSET_CLASS_LABELS, classWeights, type AssetClass } from "@/lib/engine/allocation";
-import { fireNumber, futureValue, yearsToTarget } from "@/lib/engine/wealth";
-import { money, num } from "@/lib/format";
+import { money, num, pct } from "@/lib/format";
+import { useBookModel } from "@/lib/hooks/use-book-model";
 import { ClientOnly } from "@/lib/hooks/use-mounted";
 import { useQuotes } from "@/lib/hooks/use-quotes";
 import { usePortfolio } from "@/lib/portfolio/store";
@@ -21,20 +21,16 @@ const COLORS = ["#d4b483", "#8fbf9f", "#7ea0b7", "#c98b6a", "#b7a0c9", "#9aa0a6"
 
 export function DashboardView() {
   const { state, ready } = usePortfolio();
-  const symbols = [...state.holdings.map((h) => h.symbol), ...state.watchlist, ...INDEXES];
-  const { quotes } = useQuotes(symbols);
+  const extra = [...state.watchlist, ...INDEXES];
+  const { quotes: extraQuotes } = useQuotes(extra);
+  const book = useBookModel();
+  const quotes = { ...extraQuotes, ...book.quotes };
 
-  const rows = state.holdings.map((h) => {
-    const price = quotes[h.symbol]?.price ?? h.costPerShare;
-    const value = h.shares * price;
-    const cost = h.shares * h.costPerShare;
-    const day = quotes[h.symbol]?.changePercentage ?? 0;
-    return { ...h, price, value, cost, pnl: value - cost, day };
-  });
-  const invested = rows.reduce((s, r) => s + r.value, 0);
-  const cost = rows.reduce((s, r) => s + r.cost, 0);
-  const netWorth = invested + state.cash;
-  const dayPnl = rows.reduce((s, r) => s + r.value * ((r.day ?? 0) / 100), 0);
+  const rows = book.valued;
+  const invested = book.invested;
+  const cost = rows.reduce((s, r) => s + r.shares * r.costPerShare, 0);
+  const netWorth = book.netWorth;
+  const dayPnl = rows.reduce((s, r) => s + r.value * ((quotes[r.symbol]?.changePercentage ?? 0) / 100), 0);
   const weights = classWeights([
     ...rows.map((r) => ({ assetClass: r.assetClass as AssetClass, value: r.value })),
     { assetClass: "cash", value: state.cash },
@@ -42,33 +38,16 @@ export function DashboardView() {
   const pie = (Object.entries(weights) as [AssetClass, number][])
     .filter(([, w]) => w > 0.001)
     .map(([key, w]) => ({ name: ASSET_CLASS_LABELS[key], value: w }));
-
-  const fire = fireNumber(state.goals.annualSpend, state.goals.safeWithdrawalRate);
-  const years = yearsToTarget({
-    presentValue: netWorth,
-    monthlyContribution: state.goals.monthlyContribution,
-    annualReturn: state.goals.expectedReturn,
-    inflation: state.goals.inflation,
-    target: fire,
-    contributionGrowth: state.goals.contributionGrowth,
-  });
-  const atRetire = futureValue({
-    presentValue: netWorth,
-    monthlyContribution: state.goals.monthlyContribution,
-    annualReturn: state.goals.expectedReturn,
-    inflation: state.goals.inflation,
-    years: Math.max(0, state.goals.retirementAge - state.goals.currentAge),
-    contributionGrowth: state.goals.contributionGrowth,
-  });
+  const dollarVar = (book.hist.var ?? 0) * invested;
 
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">Personal compounding desk</p>
-          <h1 className="font-heading text-4xl tracking-tight">The book, the plan, the tape.</h1>
+          <p className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">Quantitative desk</p>
+          <h1 className="font-heading text-4xl tracking-tight">The book, the covariance, the tape.</h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            Track what you own, engineer the savings rate that actually gets you there, and interrogate securities with Financial Modeling Prep data.
+            Mark-to-market on Financial Modeling Prep, then mean-variance, VaR, and CAPM on the same return histories.
           </p>
         </div>
         <SymbolSearch />
@@ -82,14 +61,14 @@ export function DashboardView() {
           hint={<DeltaFromPercent value={cost ? ((invested - cost) / cost) * 100 : 0} />}
         />
         <Kpi
-          label="Today"
-          value={money(dayPnl)}
-          hint={<DeltaFromPercent value={invested ? (dayPnl / invested) * 100 : 0} />}
+          label="Sharpe"
+          value={num(book.sharpe, 2)}
+          hint={`σ ${pct(book.annVol, false)} · TE vs SPY ${pct(book.te, false)}`}
         />
         <Kpi
-          label="Years to FIRE"
-          value={years == null ? "80+" : num(years, 1)}
-          hint={`${money(fire, true)} nest egg at ${num(state.goals.safeWithdrawalRate * 100, 1)}% SWR`}
+          label="95% hist. VaR"
+          value={money(dollarVar)}
+          hint={`Daily loss ${pct(book.hist.var, false)} · CVaR ${pct(book.hist.cvar, false)}`}
         />
       </div>
 
@@ -119,9 +98,9 @@ export function DashboardView() {
                       <div className="text-xs text-muted-foreground">{row.name}</div>
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">{money(row.value)}</TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">{money(row.pnl)}</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums">{money(row.value - row.shares * row.costPerShare)}</TableCell>
                     <TableCell className="text-right">
-                      <DeltaFromPercent value={row.day} />
+                      <DeltaFromPercent value={quotes[row.symbol]?.changePercentage} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -135,7 +114,7 @@ export function DashboardView() {
           <Card>
             <CardHeader>
               <CardTitle>Allocation</CardTitle>
-              <CardDescription>Versus your target mix on the Plan page.</CardDescription>
+              <CardDescription>Asset-class mix. Security-level GMV lives on Optimize.</CardDescription>
             </CardHeader>
             <CardContent className="flex items-center gap-4">
               <div className="h-40 w-40">
@@ -165,20 +144,24 @@ export function DashboardView() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Retirement path</CardTitle>
+              <CardTitle>Distance to GMV</CardTitle>
               <CardDescription>
-                At {state.goals.retirementAge}, real wealth ≈ {money(atRetire, true)} vs a {money(fire, true)} FIRE number.
+                One-way turnover to the long-only global minimum-variance book is {pct(book.gmvTurnover, false)}.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-2 overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full bg-primary"
-                  style={{ width: `${Math.min(100, (netWorth / fire) * 100)}%` }}
+                  style={{ width: `${Math.min(100, book.gmvTurnover * 200)}%` }}
                 />
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                {num((netWorth / fire) * 100, 1)}% of the nest egg funded today.
+                Today {money(dayPnl)} on the session.{" "}
+                <Link href="/optimize" className="underline underline-offset-4">
+                  Run the optimizer
+                </Link>
+                .
               </p>
             </CardContent>
           </Card>
