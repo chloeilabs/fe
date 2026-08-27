@@ -82,7 +82,8 @@ export function OptimizeView() {
     const erc = resultOf("erc", riskParity(cov), mu, cov, rf);
     const pi = blackLitterman(cov, weights, parsed, { delta, tau });
     const blMu = pi.map((x) => x + rf);
-    const bl = resultOf("bl", maxSharpe(blMu, cov, rf, longOnly), blMu, cov, rf);
+    const blW = maxSharpe(blMu, cov, rf, longOnly);
+    const bl = resultOf("bl", blW, mu, cov, rf);
     return [
       { ...current, id: "current" as const, label: "Current", muUsed: mu },
       { ...gmv, id: "gmv" as const, label: "Global min variance", muUsed: mu },
@@ -257,7 +258,10 @@ export function OptimizeView() {
         <Card>
           <CardHeader>
             <CardTitle>Named portfolios</CardTitle>
-            <CardDescription>Annualized moments on the shrunk covariance.</CardDescription>
+            <CardDescription>
+              Sample μ and the shrunk Σ. Black–Litterman weights are solved on π = δΣw plus views; the Sharpe here is
+              still the sample moment of those weights.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
