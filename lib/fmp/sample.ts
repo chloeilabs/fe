@@ -203,6 +203,9 @@ export function sampleRatios(symbol: string): FmpRatiosTtm | null {
     debtToEquityRatioTTM: spec.etf ? 0.2 : 1.5,
     returnOnEquityTTM: spec.etf ? 0.18 : 1.47,
     returnOnAssetsTTM: spec.etf ? 0.08 : 0.33,
+    bookValuePerShareTTM: spec.etf ? spec.price * 0.4 : spec.price * 0.02,
+    shareholdersEquityPerShareTTM: spec.etf ? spec.price * 0.4 : spec.price * 0.02,
+    dividendPerShareTTM: spec.etf ? 1.8 : 1.0,
   };
 }
 

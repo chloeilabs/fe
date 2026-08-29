@@ -69,6 +69,19 @@ describe("residual income", () => {
   it("matches Gordon on a growing dividend", () => {
     close(dividendDiscount(2, 0.08, 0.03), 2 * 1.03 / 0.05);
   });
+
+  it("keeps only year-1 residual when fade is 0", () => {
+    const res = residualIncome({
+      bookValue: 50,
+      roe: 0.15,
+      costEquity: 0.1,
+      growth: 0.03,
+      years: 6,
+      fade: 0,
+    });
+    close(res.pvResidual, ((0.15 - 0.1) * 50) / 1.1, 1e-10);
+    close(res.pvTerminal, 0, 1e-10);
+  });
 });
 
 describe("earnings event study", () => {

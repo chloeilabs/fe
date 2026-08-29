@@ -206,6 +206,9 @@ export type FmpRatiosTtm = {
   debtToEquityRatioTTM?: number;
   returnOnEquityTTM?: number;
   returnOnAssetsTTM?: number;
+  bookValuePerShareTTM?: number;
+  shareholdersEquityPerShareTTM?: number;
+  dividendPerShareTTM?: number;
   [key: string]: string | number | undefined;
 };
 

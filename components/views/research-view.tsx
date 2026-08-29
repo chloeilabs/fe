@@ -230,10 +230,15 @@ export function ResearchView({ symbol }: { symbol: string }) {
   const targetUpside =
     target?.targetConsensus && price ? target.targetConsensus / price - 1 : null;
   const ke = dcfInputs.rf / 100 + (profile?.beta ?? 1) * (dcfInputs.erp / 100);
-  const bookValue =
+  const bookAnnual =
     (balance[0]?.totalStockholdersEquity ?? 0) / Math.max(sharesOut || 1, 1e-9);
-  const roe = Number(ratios?.returnOnEquityTTM) || 0;
+  const bookValue =
+    Number(ratios?.bookValuePerShareTTM) ||
+    Number(ratios?.shareholdersEquityPerShareTTM) ||
+    bookAnnual;
+  const roe = Number(metrics?.returnOnEquityTTM) || Number(ratios?.returnOnEquityTTM) || 0;
   const bookG = Number(growth[0]?.bookValueperShareGrowth) || dcfInputs.gStable / 100;
+  const riFade = 0.7;
   const ri = bookValue
     ? residualIncome({
         bookValue,
@@ -241,9 +246,12 @@ export function ResearchView({ symbol }: { symbol: string }) {
         costEquity: ke,
         growth: Math.min(bookG, ke - 0.005),
         years: dcfInputs.years,
+        fade: riFade,
       })
     : null;
-  const ttmDps = dividends.slice(0, 4).reduce((s, row) => s + (row.adjDividend ?? row.dividend ?? 0), 0);
+  const ttmDps =
+    Number(ratios?.dividendPerShareTTM) ||
+    dividends.slice(0, 4).reduce((s, row) => s + (row.adjDividend ?? row.dividend ?? 0), 0);
   const ddm = ttmDps > 0 ? dividendDiscount(ttmDps, ke, dcfInputs.gStable / 100) : null;
   const cars = earningsCars(
     history,
@@ -571,8 +579,8 @@ export function ResearchView({ symbol }: { symbol: string }) {
           <CardHeader>
             <CardTitle>Residual income</CardTitle>
             <CardDescription>
-              V₀ = B₀ + Σ (ROE − r) Bₜ₋₁ / (1+r)ᵗ + TV. Book grows at min(book g, r − 50bp). Clean surplus if payout =
-              1 − g/ROE.
+              V₀ = B₀ + Σ (ROEₜ − r) Bₜ₋₁ / (1+r)ᵗ + TV. Abnormal ROE fades at ω={riFade}. Book grows at min(book g, r −
+              50bp). ROE from key-metrics-ttm; book from TTM equity / share.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
@@ -587,8 +595,10 @@ export function ResearchView({ symbol }: { symbol: string }) {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Growth used</span>
-              <span className="font-mono">{pct(Math.min(bookG, ke - 0.005), false)}</span>
+              <span className="text-muted-foreground">Growth used · fade ω</span>
+              <span className="font-mono">
+                {pct(Math.min(bookG, ke - 0.005), false)} · {num(riFade, 2)}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">PV residual + PV terminal</span>
