@@ -9,19 +9,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { fetchFmp, fetchFmpOptional } from "@/lib/fmp/browser";
 import { ClientOnly } from "@/lib/hooks/use-mounted";
+import { earningsYieldGap } from "@/lib/engine/bonds";
 import { curvePoints, fitNelsonSiegel, treasuryToCurve } from "@/lib/engine/nelson-siegel";
 import type {
+  FmpDividend,
   FmpEconEvent,
   FmpEconPoint,
   FmpHours,
+  FmpIndustryPe,
+  FmpIndustryPerf,
   FmpMover,
   FmpQuote,
+  FmpRatiosTtm,
   FmpSector,
   FmpSectorPe,
   FmpTreasury,
 } from "@/lib/fmp/types";
-import { money, num } from "@/lib/format";
+import { money, num, pct } from "@/lib/format";
 import { useQuotes } from "@/lib/hooks/use-quotes";
+import { usePortfolio } from "@/lib/portfolio/store";
 
 const INDEXES = ["^GSPC", "^DJI", "^IXIC", "^RUT", "^VIX"];
 
@@ -39,6 +45,8 @@ function isoShift(days: number) {
 
 export function MarketsView() {
   const { quotes } = useQuotes(INDEXES);
+  const { state } = usePortfolio();
+  const bookSymbols = new Set(state.holdings.map((h) => h.symbol));
   const [sectors, setSectors] = useState<FmpSector[]>([]);
   const [gainers, setGainers] = useState<FmpMover[]>([]);
   const [losers, setLosers] = useState<FmpMover[]>([]);
@@ -50,6 +58,10 @@ export function MarketsView() {
   const [fed, setFed] = useState<FmpEconPoint | null>(null);
   const [econ, setEcon] = useState<FmpEconEvent[]>([]);
   const [sectorPe, setSectorPe] = useState<FmpSectorPe[]>([]);
+  const [industryPe, setIndustryPe] = useState<FmpIndustryPe[]>([]);
+  const [industryPerf, setIndustryPerf] = useState<FmpIndustryPerf[]>([]);
+  const [divCal, setDivCal] = useState<FmpDividend[]>([]);
+  const [spyPe, setSpyPe] = useState<number | null>(null);
 
   useEffect(() => {
     const date = lastWeekday();
@@ -78,11 +90,20 @@ export function MarketsView() {
         to: isoShift(21),
       }),
       fetchFmpOptional<FmpSectorPe[]>("sector-pe-snapshot", { date, exchange: "NASDAQ" }),
-    ]).then(([c, u, f, cal, pe]) => {
+      fetchFmpOptional<FmpIndustryPe[]>("industry-pe-snapshot", { date, exchange: "NASDAQ" }),
+      fetchFmpOptional<FmpIndustryPerf[]>("industry-performance-snapshot", { date, exchange: "NASDAQ" }),
+      fetchFmpOptional<FmpDividend[]>("dividends-calendar", { from: isoShift(-3), to: isoShift(45) }),
+      fetchFmpOptional<FmpRatiosTtm[]>("ratios-ttm", { symbol: "SPY" }),
+    ]).then(([c, u, f, cal, pe, ind, perf, divs, spyRatios]) => {
       setCpi(c?.[0] ?? null);
       setUnemp(u?.[0] ?? null);
       setFed(f?.[0] ?? null);
       setSectorPe(pe ?? []);
+      setIndustryPe((ind ?? []).slice(0, 12));
+      setIndustryPerf((perf ?? []).slice(0, 12));
+      setDivCal(divs ?? []);
+      const peTtm = Number(spyRatios?.[0]?.priceToEarningsRatioTTM);
+      setSpyPe(Number.isFinite(peTtm) && peTtm > 0 ? peTtm : null);
       setEcon(
         (cal ?? [])
           .slice()
@@ -101,6 +122,12 @@ export function MarketsView() {
     () => (curve.length >= 4 ? fitNelsonSiegel(curve.map((c) => c.tau), curve.map((c) => c.yield)) : null),
     [curve],
   );
+  const fedGap = useMemo(() => {
+    const y10 = treasury?.year10;
+    if (spyPe == null || y10 == null) return null;
+    return earningsYieldGap(spyPe, y10);
+  }, [spyPe, treasury?.year10]);
+
   const nsChart = useMemo(() => {
     if (!ns || !curve.length) return curve.map((c) => ({ tenor: c.tenor, observed: c.yield, fitted: c.yield }));
     const dense = curvePoints(ns, curve.map((c) => c.tau));
@@ -112,13 +139,21 @@ export function MarketsView() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">The tape</p>
-          <h1 className="font-heading text-4xl tracking-tight">Markets, sector P/E, and the curve</h1>
+          <h1 className="font-heading text-4xl tracking-tight">Markets, industry tape, and the curve</h1>
         </div>
-        {hours ? (
-          <div className="text-sm text-muted-foreground">
-            NASDAQ {hours.isMarketOpen ? "open" : "closed"} · {hours.openingHour}–{hours.closingHour} {hours.timezone}
+        <div className="text-sm text-muted-foreground">
+          {hours ? (
+            <div>
+              NASDAQ {hours.isMarketOpen ? "open" : "closed"} · {hours.openingHour}–{hours.closingHour} {hours.timezone}
+            </div>
+          ) : null}
+          <div>
+            Fed gap {fedGap == null ? "—" : pct(fedGap, true)}
+            {spyPe != null && treasury?.year10 != null
+              ? ` · SPY E/P ${pct(1 / spyPe, false)} vs 10y ${num(treasury.year10, 2)}%`
+              : ""}
           </div>
-        ) : null}
+        </div>
       </header>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {INDEXES.map((sym) => (
@@ -178,6 +213,85 @@ export function MarketsView() {
               </LineChart>
             </ResponsiveContainer>
             </ClientOnly>
+          </CardContent>
+        </Card>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardTitle>Industry P/E</CardTitle>
+            <CardDescription>FMP industry-pe-snapshot · NASDAQ · {lastWeekday()}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {industryPe.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No industry P/E rows for this date.</p>
+            ) : (
+              industryPe.map((row) => (
+                <div key={`${row.industry}-${row.exchange ?? ""}`} className="flex items-center justify-between text-sm">
+                  <span>{row.industry}</span>
+                  <span className="font-mono tabular-nums">{num(row.pe, 1)}</span>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Industry tape</CardTitle>
+            <CardDescription>FMP industry-performance-snapshot · NASDAQ</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {industryPerf.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No industry performance rows for this date.</p>
+            ) : (
+              industryPerf.map((row) => (
+                <div key={`${row.industry}-${row.exchange ?? ""}`} className="flex items-center justify-between text-sm">
+                  <span>{row.industry}</span>
+                  <DeltaFromPercent value={row.averageChange} />
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Book dividend calendar</CardTitle>
+            <CardDescription>FMP dividends-calendar filtered to names in the book</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {divCal.filter((row) => bookSymbols.has(row.symbol)).length === 0 ? (
+              <p className="text-sm text-muted-foreground">No book names in the next 45 days.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Ex</TableHead>
+                    <TableHead className="text-right">DPS</TableHead>
+                    <TableHead className="text-right">Yield</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {divCal
+                    .filter((row) => bookSymbols.has(row.symbol))
+                    .slice(0, 8)
+                    .map((row, i) => (
+                      <TableRow key={`${row.symbol}-${row.date}-${i}`}>
+                        <TableCell className="font-mono">
+                          <Link href={`/research/${row.symbol}`} className="hover:text-primary">
+                            {row.symbol}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{row.date}</TableCell>
+                        <TableCell className="text-right font-mono">{num(row.adjDividend ?? row.dividend, 2)}</TableCell>
+                        <TableCell className="text-right font-mono">
+                          {row.yield != null ? `${num(row.yield, 2)}%` : "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

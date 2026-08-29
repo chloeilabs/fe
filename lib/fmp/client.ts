@@ -5,10 +5,21 @@ import {
   sampleCashFlow,
   sampleDcf,
   sampleDividends,
+  sampleEtfCountries,
   sampleEtfHoldings,
   sampleEtfInfo,
   sampleEtfSectors,
+  sampleEnterpriseValues,
+  sampleFullHistory,
   sampleGrades,
+  sampleGeographicRevenue,
+  sampleHistoricalMarketCap,
+  sampleIndustryPe,
+  sampleIndustryPerf,
+  samplePriceTargetSummary,
+  sampleProductRevenue,
+  sampleSharesFloat,
+  sampleDividendsCalendar,
   sampleGrowth,
   sampleKeyMetrics,
   sampleOwnerEarnings,
@@ -82,6 +93,8 @@ function fromSample(path: AllowedFmpPath, params: Record<string, string>): unkno
       return symbol ? [sampleProfile(symbol)].filter(Boolean) : [];
     case "historical-price-eod/light":
       return symbol ? sampleHistory(symbol) : [];
+    case "historical-price-eod/full":
+      return symbol ? sampleFullHistory(symbol) : [];
     case "key-metrics-ttm":
       return symbol ? [sampleMetrics(symbol)].filter(Boolean) : [];
     case "ratios-ttm":
@@ -139,8 +152,30 @@ function fromSample(path: AllowedFmpPath, params: Record<string, string>): unkno
       return symbol ? [sampleEtfInfo(symbol)].filter(Boolean) : [];
     case "etf/sector-weightings":
       return symbol ? sampleEtfSectors(symbol) : [];
+    case "etf/country-weightings":
+      return symbol ? sampleEtfCountries(symbol) : [];
     case "sector-pe-snapshot":
       return sampleSectorPe();
+    case "industry-pe-snapshot":
+      return sampleIndustryPe();
+    case "shares-float":
+      return symbol ? [sampleSharesFloat(symbol)].filter(Boolean) : [];
+    case "enterprise-values":
+      return symbol ? sampleEnterpriseValues(symbol) : [];
+    case "levered-discounted-cash-flow":
+      return symbol ? [sampleDcf(symbol)].filter(Boolean).map((row) => ({ ...row, dcf: row.dcf * 0.96 })) : [];
+    case "dividends-calendar":
+      return sampleDividendsCalendar();
+    case "price-target-summary":
+      return symbol ? [samplePriceTargetSummary(symbol)].filter(Boolean) : [];
+    case "revenue-geographic-segmentation":
+      return symbol ? sampleGeographicRevenue(symbol) : [];
+    case "revenue-product-segmentation":
+      return symbol ? sampleProductRevenue(symbol) : [];
+    case "historical-market-capitalization":
+      return symbol ? sampleHistoricalMarketCap(symbol, Number(params.limit) || 260) : [];
+    case "industry-performance-snapshot":
+      return sampleIndustryPerf();
     case "economic-indicators":
       return sampleEconIndicator(params.name ?? "CPI");
     case "economic-calendar":

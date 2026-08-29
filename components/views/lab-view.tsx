@@ -25,6 +25,7 @@ import {
   type ClassBrinsonSlice,
 } from "@/lib/engine/attribution";
 import { walkForward } from "@/lib/engine/backtest";
+import { curveConvexity, curveDuration, modifiedDuration } from "@/lib/engine/bonds";
 import { logPrices, pairwiseCoint } from "@/lib/engine/coint";
 import { annualizeVariance, fitGarch } from "@/lib/engine/garch";
 import {
@@ -35,8 +36,8 @@ import {
 } from "@/lib/engine/nelson-siegel";
 import { portfolioReturns, sortedBars } from "@/lib/engine/risk";
 import { fetchFmp, fetchFmpOptional } from "@/lib/fmp/browser";
-import type { FmpEtfHolding, FmpEtfInfo, FmpEtfSector, FmpLightBar, FmpTreasury } from "@/lib/fmp/types";
-import { money, num, pct } from "@/lib/format";
+import type { FmpEtfCountry, FmpEtfHolding, FmpEtfInfo, FmpEtfSector, FmpLightBar, FmpTreasury } from "@/lib/fmp/types";
+import { money, num, parseWeightPct, pct } from "@/lib/format";
 import { useBookModel } from "@/lib/hooks/use-book-model";
 import { ClientOnly } from "@/lib/hooks/use-mounted";
 
@@ -50,6 +51,7 @@ export function LabView() {
   const [etfInfo, setEtfInfo] = useState<FmpEtfInfo | null>(null);
   const [etfHoldings, setEtfHoldings] = useState<FmpEtfHolding[]>([]);
   const [etfSectors, setEtfSectors] = useState<FmpEtfSector[]>([]);
+  const [etfCountries, setEtfCountries] = useState<FmpEtfCountry[]>([]);
   const etfSymbol = useMemo(() => {
     const etfs = book.valued.filter((h) => ["VTI", "VXUS", "BND", "SPY", "IWM"].includes(h.symbol));
     return [...etfs].sort((a, b) => b.value - a.value)[0]?.symbol ?? "VTI";
@@ -67,11 +69,13 @@ export function LabView() {
       fetchFmpOptional<FmpEtfInfo[]>("etf/info", { symbol: etfSymbol }),
       fetchFmpOptional<FmpEtfHolding[]>("etf/holdings", { symbol: etfSymbol }),
       fetchFmpOptional<FmpEtfSector[]>("etf/sector-weightings", { symbol: etfSymbol }),
-    ]).then(([info, holds, sectors]) => {
+      fetchFmpOptional<FmpEtfCountry[]>("etf/country-weightings", { symbol: etfSymbol }),
+    ]).then(([info, holds, sectors, countries]) => {
       if (cancelled) return;
       setEtfInfo(info?.[0] ?? null);
       setEtfHoldings((holds ?? []).slice(0, 8));
       setEtfSectors((sectors ?? []).slice(0, 8));
+      setEtfCountries((countries ?? []).slice(0, 8));
     });
     return () => {
       cancelled = true;
@@ -124,6 +128,19 @@ export function LabView() {
       observed: c.yield,
       fitted: dense[i]?.yield ?? nsYield(c.tau, ns.beta0, ns.beta1, ns.beta2, ns.lambda),
     }));
+  }, [curve, ns]);
+
+  const curveRisk = useMemo(() => {
+    if (!curve.length) return null;
+    const points = curve.map((c) => ({ tau: c.tau, yield: c.yield }));
+    const y10raw = ns ? nsYield(10, ns.beta0, ns.beta1, ns.beta2, ns.lambda) : curve.find((c) => c.tau === 10)?.yield;
+    const y10 = y10raw != null ? (y10raw > 2 ? y10raw / 100 : y10raw) : null;
+    return {
+      duration: curveDuration(points),
+      convexity: curveConvexity(points),
+      d10: y10 != null ? modifiedDuration(y10, 10) : null,
+      y10,
+    };
   }, [curve, ns]);
 
   const cointRows = useMemo(() => {
@@ -190,9 +207,9 @@ export function LabView() {
         <p className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">Lab</p>
         <h1 className="font-heading text-4xl tracking-tight">Engines on the live book</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          GARCH(1,1) on the value-weighted book, Nelson–Siegel on the Treasury curve, Engle–Granger on log prices
-          (with last z), Brinson–Fachler versus your policy mix, a walk-forward of EW / GMV / max-Sharpe / ERC, and
-          ETF look-through.
+          GARCH(1,1) on the value-weighted book, Nelson–Siegel plus zero-coupon duration/convexity on the Treasury
+          curve, Engle–Granger on log prices (with last z), Brinson–Fachler versus your policy mix, a walk-forward of
+          EW / GMV / max-Sharpe / ERC, and ETF look-through including country weights.
         </p>
       </header>
       {book.error ? <p className="text-sm text-destructive">{book.error}</p> : null}
@@ -206,7 +223,11 @@ export function LabView() {
         <Kpi
           label="NS RMSE"
           value={ns ? num(ns.rmse, 3) : "—"}
-          hint={ns ? `β0 ${num(ns.beta0, 2)} · λ ${num(ns.lambda, 2)}` : "Waiting on treasury-rates"}
+          hint={
+            curveRisk
+              ? `10y D_mod ${num(curveRisk.d10, 2)} · curve D ${num(curveRisk.duration, 2)}`
+              : "Waiting on treasury-rates"
+          }
         />
         <Kpi
           label="Cointegrated pairs"
@@ -392,13 +413,13 @@ export function LabView() {
         <CardHeader>
           <CardTitle>Look-through · {etfSymbol}</CardTitle>
           <CardDescription>
-            FMP etf/info, etf/holdings, etf/sector-weightings. Expense{" "}
+            FMP etf/info, etf/holdings, etf/sector-weightings, etf/country-weightings. Expense{" "}
             {etfInfo?.expenseRatio != null ? `${num(etfInfo.expenseRatio, 2)}%` : "—"} · AUM{" "}
             {etfInfo?.assetsUnderManagement != null ? money(etfInfo.assetsUnderManagement, true) : "—"} · holdings{" "}
             {etfInfo?.holdingsCount ?? "—"}.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-2">
+        <CardContent className="grid gap-4 lg:grid-cols-3">
           <Table>
             <TableHeader>
               <TableRow>
@@ -422,6 +443,18 @@ export function LabView() {
                 <span className="font-mono">{pct(row.weightPercentage / 100, false)}</span>
               </div>
             ))}
+          </div>
+          <div className="space-y-2 text-sm">
+            {etfCountries.length === 0 ? (
+              <p className="text-muted-foreground">No country weights.</p>
+            ) : (
+              etfCountries.map((row) => (
+                <div key={row.country} className="flex justify-between">
+                  <span>{row.country}</span>
+                  <span className="font-mono">{pct(parseWeightPct(row.weightPercentage), false)}</span>
+                </div>
+              ))
+            )}
           </div>
         </CardContent>
       </Card>

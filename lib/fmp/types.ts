@@ -393,6 +393,85 @@ export type FmpSectorPe = {
   pe: number;
 };
 
+export type FmpOhlcBar = {
+  symbol?: string;
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+  change?: number;
+  changePercent?: number;
+  vwap?: number;
+};
+
+export type FmpIndustryPe = {
+  date?: string;
+  industry: string;
+  exchange?: string;
+  pe: number;
+};
+
+export type FmpSharesFloat = {
+  symbol: string;
+  date?: string;
+  freeFloat?: number;
+  floatShares?: number;
+  outstandingShares?: number;
+};
+
+export type FmpEnterpriseValue = {
+  symbol: string;
+  date?: string;
+  stockPrice?: number;
+  numberOfShares?: number;
+  marketCapitalization?: number;
+  minusCashAndCashEquivalents?: number;
+  addTotalDebt?: number;
+  enterpriseValue?: number;
+};
+
+export type FmpEtfCountry = {
+  country: string;
+  weightPercentage: string | number;
+};
+
+export type FmpRevenueSegment = {
+  symbol: string;
+  fiscalYear?: number | string;
+  period?: string;
+  reportedCurrency?: string;
+  date?: string;
+  data: Record<string, number>;
+};
+
+export type FmpMarketCap = {
+  symbol: string;
+  date: string;
+  marketCap: number;
+};
+
+export type FmpIndustryPerf = {
+  date?: string;
+  industry: string;
+  exchange?: string;
+  averageChange: number;
+};
+
+export type FmpPriceTargetSummary = {
+  symbol: string;
+  lastMonthCount?: number;
+  lastMonthAvgPriceTarget?: number;
+  lastQuarterCount?: number;
+  lastQuarterAvgPriceTarget?: number;
+  lastYearCount?: number;
+  lastYearAvgPriceTarget?: number;
+  allTimeCount?: number;
+  allTimeAvgPriceTarget?: number;
+  publishers?: string;
+};
+
 export type FmpEconEvent = {
   date: string;
   country?: string;
@@ -449,7 +528,19 @@ export const ALLOWED_FMP_PATHS = [
   "etf/holdings",
   "etf/info",
   "etf/sector-weightings",
+  "etf/country-weightings",
   "sector-pe-snapshot",
+  "industry-pe-snapshot",
+  "historical-price-eod/full",
+  "shares-float",
+  "enterprise-values",
+  "levered-discounted-cash-flow",
+  "dividends-calendar",
+  "price-target-summary",
+  "revenue-geographic-segmentation",
+  "revenue-product-segmentation",
+  "historical-market-capitalization",
+  "industry-performance-snapshot",
 ] as const;
 
 export type AllowedFmpPath = (typeof ALLOWED_FMP_PATHS)[number];

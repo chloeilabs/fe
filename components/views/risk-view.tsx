@@ -8,10 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { annualizeAlpha } from "@/lib/engine/capm";
 import { annualizeAlphaDaily, famaFrench3, makeHml, makeSmb } from "@/lib/engine/factors";
+import { capmNeweyWest } from "@/lib/engine/hac";
+import { realizedBundle, rollImpliedSpread, skipMonthMomentum } from "@/lib/engine/realized";
 import { alignedReturns, calmarRatio, effectiveN, maxDrawdown, sortinoRatio } from "@/lib/engine/risk";
 import { dollarVaR } from "@/lib/engine/var";
-import { fetchFmp } from "@/lib/fmp/browser";
-import type { FmpLightBar } from "@/lib/fmp/types";
+import { fetchFmp, fetchFmpOptional } from "@/lib/fmp/browser";
+import type { FmpLightBar, FmpOhlcBar } from "@/lib/fmp/types";
 import { money, num, pct } from "@/lib/format";
 import { useBookModel } from "@/lib/hooks/use-book-model";
 import { ClientOnly } from "@/lib/hooks/use-mounted";
@@ -21,6 +23,7 @@ const FF_PROXY = ["IWM", "IWD", "IWF"] as const;
 export function RiskView() {
   const book = useBookModel();
   const [ffBars, setFfBars] = useState<Record<string, FmpLightBar[]>>({});
+  const [ohlc, setOhlc] = useState<Record<string, FmpOhlcBar[]>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +43,34 @@ export function RiskView() {
       cancelled = true;
     };
   }, []);
+
+  const ohlcKey = book.names.join(",");
+  useEffect(() => {
+    if (!ohlcKey) return;
+    let cancelled = false;
+    const from = new Date();
+    from.setUTCDate(from.getUTCDate() - 420);
+    const fromStr = from.toISOString().slice(0, 10);
+    Promise.all(
+      ohlcKey.split(",").map((symbol) =>
+        fetchFmpOptional<FmpOhlcBar[]>("historical-price-eod/full", { symbol, from: fromStr }),
+      ),
+    )
+      .then((rows) => {
+        if (cancelled) return;
+        const next: Record<string, FmpOhlcBar[]> = {};
+        ohlcKey.split(",").forEach((symbol, i) => {
+          next[symbol] = rows[i] ?? [];
+        });
+        setOhlc(next);
+      })
+      .catch(() => {
+        if (!cancelled) setOhlc({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ohlcKey]);
   const wealthBars = book.port.reduce<{ date: string; price: number }[]>((acc, r, i) => {
     const prev = acc[acc.length - 1]?.price ?? 100;
     acc.push({ date: String(i), price: prev * (1 + r) });
@@ -76,14 +107,37 @@ export function RiskView() {
     return { bookFf, names };
   }, [book.market, book.names, book.port, book.series, ffBars]);
 
+  const rangeVol = useMemo(() => {
+    return book.names.map((symbol) => {
+      const bars = ohlc[symbol] ?? [];
+      const light = book.series[symbol] ?? [];
+      return {
+        symbol,
+        ...realizedBundle(bars),
+        mom: skipMonthMomentum(light.map((b) => ({ date: b.date, price: b.price }))),
+        roll: rollImpliedSpread(book.returns[symbol] ?? []),
+      };
+    });
+  }, [book.names, book.returns, book.series, ohlc]);
+
+  const capmHac = useMemo(
+    () =>
+      book.nameCapm.map((row) => ({
+        symbol: row.symbol,
+        ...capmNeweyWest(book.returns[row.symbol] ?? [], book.market, 0.043 / 252),
+      })),
+    [book.market, book.nameCapm, book.returns],
+  );
+
   return (
     <div className="space-y-6">
       <header>
         <p className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">Risk</p>
         <h1 className="font-heading text-4xl tracking-tight">VaR, factors, and CAPM</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Historical, Gaussian, and Cornish–Fisher VaR on the value-weighted book; EWMA (λ=0.94) vol; Jacobi PCA on
-          the shrunk correlation matrix; OLS α/β versus SPY; scalar Kalman β; Fama–French 3-factor via IWM / IWD / IWF.
+          Historical, Gaussian, and Cornish–Fisher VaR on the value-weighted book; EWMA (λ=0.94) vol; Parkinson /
+          Garman–Klass / Yang–Zhang range vol from full OHLC; Amihud; Roll implied spread; 12–1 skip-month momentum;
+          Newey–West t(α); Jacobi PCA; OLS α/β versus SPY; scalar Kalman β; Fama–French 3-factor via IWM / IWD / IWF.
         </p>
       </header>
       {book.error ? <p className="text-sm text-destructive">{book.error}</p> : null}
@@ -119,7 +173,8 @@ export function RiskView() {
         <CardHeader>
           <CardTitle>CAPM by name</CardTitle>
           <CardDescription>
-            OLS on aligned daily excess vs SPY. Book α {pct(annualizeAlpha(book.bookCapm.alpha), true)} annualized · IR{" "}
+            OLS on aligned daily excess vs SPY. Newey–West t(α) uses Bartlett lags ⌊n^{1/3}⌋. Book α{" "}
+            {pct(annualizeAlpha(book.bookCapm.alpha), true)} annualized · IR{" "}
             {num(book.bookCapm.informationRatio * Math.sqrt(252), 2)}. Effective N {num(nEff, 2)}.
           </CardDescription>
         </CardHeader>
@@ -132,6 +187,7 @@ export function RiskView() {
                 <TableHead className="text-right">β</TableHead>
                 <TableHead className="text-right">α (ann.)</TableHead>
                 <TableHead className="text-right">R²</TableHead>
+                <TableHead className="text-right">t(α) NW</TableHead>
                 <TableHead className="text-right">IR</TableHead>
               </TableRow>
             </TableHeader>
@@ -143,6 +199,9 @@ export function RiskView() {
                   <TableCell className="text-right font-mono">{num(row.beta, 2)}</TableCell>
                   <TableCell className="text-right font-mono">{pct(row.alphaAnn, true)}</TableCell>
                   <TableCell className="text-right font-mono">{num(row.r2, 2)}</TableCell>
+                  <TableCell className="text-right font-mono">
+                    {num(capmHac.find((h) => h.symbol === row.symbol)?.tAlpha, 2)}
+                  </TableCell>
                   <TableCell className="text-right font-mono">{num(row.informationRatio * Math.sqrt(252), 2)}</TableCell>
                 </TableRow>
               ))}
@@ -169,6 +228,50 @@ export function RiskView() {
               </LineChart>
             </ResponsiveContainer>
           </ClientOnly>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Range vol and Amihud</CardTitle>
+          <CardDescription>
+            Annualized close-to-close vs Parkinson, Garman–Klass, Rogers–Satchell, and Yang–Zhang on
+            historical-price-eod/full. Amihud = mean |r| / dollar volume. Roll s = 2√(−cov r_t r_{t−1}). 12–1 is
+            Pₜ₋₂₁ / Pₜ₋₂₅₂ − 1.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {rangeVol.every((row) => row.n < 3) ? (
+            <p className="text-sm text-muted-foreground">Waiting on full OHLC bars…</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="text-right">CC</TableHead>
+                  <TableHead className="text-right">Park</TableHead>
+                  <TableHead className="text-right">GK</TableHead>
+                  <TableHead className="text-right">YZ</TableHead>
+                  <TableHead className="text-right">12–1</TableHead>
+                  <TableHead className="text-right">Roll</TableHead>
+                  <TableHead className="text-right">Amihud</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rangeVol.map((row) => (
+                  <TableRow key={row.symbol}>
+                    <TableCell className="font-mono">{row.symbol}</TableCell>
+                    <TableCell className="text-right font-mono">{pct(row.close, false)}</TableCell>
+                    <TableCell className="text-right font-mono">{pct(row.parkinson, false)}</TableCell>
+                    <TableCell className="text-right font-mono">{pct(row.garmanKlass, false)}</TableCell>
+                    <TableCell className="text-right font-mono">{pct(row.yangZhang, false)}</TableCell>
+                    <TableCell className="text-right font-mono">{row.mom == null ? "—" : pct(row.mom, true)}</TableCell>
+                    <TableCell className="text-right font-mono">{row.roll ? pct(row.roll, false) : "—"}</TableCell>
+                    <TableCell className="text-right font-mono">{row.amihud ? row.amihud.toExponential(2) : "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
       <Card>

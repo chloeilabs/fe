@@ -17,6 +17,7 @@ import { fetchFmp, fetchFmpOptional } from "@/lib/fmp/browser";
 import { ClientOnly } from "@/lib/hooks/use-mounted";
 import { standardizedSurprises } from "@/lib/engine/attribution";
 import { twoStageFcff, waccFromCapm } from "@/lib/engine/dcf";
+import { cagr, effectiveSegments, herfindahl, segmentShares, yearsBetween } from "@/lib/engine/concentration";
 import { carTStat, earningsCars } from "@/lib/engine/eventstudy";
 import { dividendDiscount, residualIncome } from "@/lib/engine/residual-income";
 import type {
@@ -43,6 +44,12 @@ import type {
   FmpRiskPremium,
   FmpScore,
   FmpSectorPe,
+  FmpEnterpriseValue,
+  FmpIndustryPe,
+  FmpMarketCap,
+  FmpPriceTargetSummary,
+  FmpRevenueSegment,
+  FmpSharesFloat,
 } from "@/lib/fmp/types";
 import { money, num, pct } from "@/lib/format";
 import { usePortfolio } from "@/lib/portfolio/store";
@@ -54,8 +61,9 @@ export function ResearchHome() {
         <p className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">Research</p>
         <h1 className="font-heading text-4xl tracking-tight">Look through the security</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Quotes, two-stage FCFF, residual income, Gordon DPS, owner earnings, grades, SUE, and market-adjusted
-          earnings CARs from FMP stable endpoints.
+          Quotes, two-stage FCFF, levered DCF, residual income, Gordon DPS, owner earnings, float, enterprise value,
+          geographic/product HHI, historical market cap, grades, SUE, and market-adjusted earnings CARs from FMP
+          stable endpoints.
         </p>
       </header>
       <SymbolSearch autoFocus />
@@ -90,6 +98,14 @@ export function ResearchView({ symbol }: { symbol: string }) {
   const [dividends, setDividends] = useState<FmpDividend[]>([]);
   const [spyHistory, setSpyHistory] = useState<FmpLightBar[]>([]);
   const [sectorPe, setSectorPe] = useState<FmpSectorPe[]>([]);
+  const [industryPe, setIndustryPe] = useState<FmpIndustryPe[]>([]);
+  const [floatRow, setFloatRow] = useState<FmpSharesFloat | null>(null);
+  const [entValues, setEntValues] = useState<FmpEnterpriseValue[]>([]);
+  const [leveredDcf, setLeveredDcf] = useState<FmpDcf | null>(null);
+  const [targetSum, setTargetSum] = useState<FmpPriceTargetSummary | null>(null);
+  const [geoRev, setGeoRev] = useState<FmpRevenueSegment[]>([]);
+  const [productRev, setProductRev] = useState<FmpRevenueSegment[]>([]);
+  const [histCap, setHistCap] = useState<FmpMarketCap[]>([]);
   const erpSeeded = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [dcfInputs, setDcfInputs] = useState({
@@ -135,7 +151,7 @@ export function ResearchView({ symbol }: { symbol: string }) {
         setChange(ch.data?.[0] ?? null);
         setError(null);
 
-        const [est, earn, tgt, rat, prem, bs, oe, gr, grow, divs, spy, pe] = await Promise.all([
+        const [est, earn, tgt, rat, prem, bs, oe, gr, grow, divs, spy, pe, indPe, flt, evs, lev, tsum, geo, prod, caps] = await Promise.all([
           fetchFmpOptional<FmpEstimate[]>("analyst-estimates", { symbol, period: "annual", limit: 6 }),
           fetchFmpOptional<FmpEarnings[]>("earnings", { symbol, limit: 12 }),
           fetchFmpOptional<FmpPriceTarget[]>("price-target-consensus", { symbol }),
@@ -148,6 +164,14 @@ export function ResearchView({ symbol }: { symbol: string }) {
           fetchFmpOptional<FmpDividend[]>("dividends", { symbol, limit: 8 }),
           fetchFmpOptional<FmpLightBar[]>("historical-price-eod/light", { symbol: "SPY" }),
           fetchFmpOptional<FmpSectorPe[]>("sector-pe-snapshot", { date: lastWeekday(), exchange: "NASDAQ" }),
+          fetchFmpOptional<FmpIndustryPe[]>("industry-pe-snapshot", { date: lastWeekday(), exchange: "NASDAQ" }),
+          fetchFmpOptional<FmpSharesFloat[]>("shares-float", { symbol }),
+          fetchFmpOptional<FmpEnterpriseValue[]>("enterprise-values", { symbol, period: "annual", limit: 4 }),
+          fetchFmpOptional<FmpDcf[]>("levered-discounted-cash-flow", { symbol }),
+          fetchFmpOptional<FmpPriceTargetSummary[]>("price-target-summary", { symbol }),
+          fetchFmpOptional<FmpRevenueSegment[]>("revenue-geographic-segmentation", { symbol, period: "annual" }),
+          fetchFmpOptional<FmpRevenueSegment[]>("revenue-product-segmentation", { symbol, period: "annual" }),
+          fetchFmpOptional<FmpMarketCap[]>("historical-market-capitalization", { symbol, limit: 260 }),
         ]);
         if (cancelled) return;
         setEstimates(est ?? []);
@@ -161,6 +185,14 @@ export function ResearchView({ symbol }: { symbol: string }) {
         setDividends(divs ?? []);
         setSpyHistory(spy ?? []);
         setSectorPe(pe ?? []);
+        setIndustryPe(indPe ?? []);
+        setFloatRow(flt?.[0] ?? null);
+        setEntValues(evs ?? []);
+        setLeveredDcf(lev?.[0] ?? null);
+        setTargetSum(tsum?.[0] ?? null);
+        setGeoRev(geo ?? []);
+        setProductRev(prod ?? []);
+        setHistCap(caps ?? []);
         const us = (prem ?? []).find((row) => /united states/i.test(row.country));
         if (us?.totalEquityRiskPremium != null) setErpUs(us.totalEquityRiskPremium);
       } catch (err) {
@@ -264,8 +296,20 @@ export function ResearchView({ symbol }: { symbol: string }) {
   const carStat = carTStat(printedCars);
   const namePe = Number(ratios?.priceToEarningsRatioTTM) || 0;
   const sectorRow = matchSectorPe(profile?.sector, sectorPe);
+  const industryRow = matchIndustryPe(profile?.industry, industryPe);
   const peVsSector = namePe && sectorRow?.pe ? namePe / sectorRow.pe - 1 : null;
+  const peVsIndustry = namePe && industryRow?.pe ? namePe / industryRow.pe - 1 : null;
+  const leveredMos = leveredDcf?.dcf && price ? leveredDcf.dcf / price - 1 : null;
   const latestGrowth = growth[0];
+  const geoShares = segmentShares(geoRev[0]?.data);
+  const productShares = segmentShares(productRev[0]?.data);
+  const geoHhi = herfindahl(geoShares.map((s) => s.value));
+  const productHhi = herfindahl(productShares.map((s) => s.value));
+  const capSorted = [...histCap].filter((r) => r.marketCap > 0).sort((a, b) => a.date.localeCompare(b.date));
+  const capFirst = capSorted[0];
+  const capLast = capSorted[capSorted.length - 1];
+  const capYears = capFirst && capLast ? yearsBetween(capFirst.date, capLast.date) : 0;
+  const capCagr = capFirst && capLast && capYears > 0 ? cagr(capFirst.marketCap, capLast.marketCap, capYears) : null;
   const gradeTotal =
     (grades?.strongBuy ?? 0) +
     (grades?.buy ?? 0) +
@@ -468,9 +512,154 @@ export function ResearchView({ symbol }: { symbol: string }) {
                   : `${num(namePe, 1)} / ${num(sectorRow?.pe, 1)} (${pct(peVsSector, true)})`}
               </span>
             </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">P/E vs industry</span>
+              <span className="font-mono">
+                {peVsIndustry == null
+                  ? "—"
+                  : `${num(namePe, 1)} / ${num(industryRow?.pe, 1)} (${pct(peVsIndustry, true)})`}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">FMP levered DCF</span>
+              <span className="font-mono">
+                {money(leveredDcf?.dcf)}
+                {leveredMos == null ? "" : ` · ${leveredMos >= 0 ? "disc." : "prem."} ${pct(Math.abs(leveredMos), false)}`}
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Float and enterprise value</CardTitle>
+            <CardDescription>
+              shares-float and enterprise-values. Free float{" "}
+              {floatRow?.freeFloat != null ? `${num(floatRow.freeFloat, 2)}%` : "—"}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Float / outstanding</span>
+              <span className="font-mono">
+                {money(floatRow?.floatShares, true)} / {money(floatRow?.outstandingShares, true)}
+              </span>
+            </div>
+            {entValues.length === 0 ? (
+              <p className="text-muted-foreground">No enterprise-value rows.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Mkt cap</TableHead>
+                    <TableHead className="text-right">Net debt</TableHead>
+                    <TableHead className="text-right">EV</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {entValues.slice(0, 4).map((row, i) => (
+                    <TableRow key={`${row.date}-${i}`}>
+                      <TableCell>{row.date}</TableCell>
+                      <TableCell className="text-right font-mono">{money(row.marketCapitalization, true)}</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {money((row.addTotalDebt ?? 0) - (row.minusCashAndCashEquivalents ?? 0), true)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">{money(row.enterpriseValue, true)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Price-target path</CardTitle>
+            <CardDescription>FMP price-target-summary · monthly / quarterly / yearly averages.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!targetSum ? (
+              <p className="text-sm text-muted-foreground">No target summary for this symbol.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Window</TableHead>
+                    <TableHead className="text-right">Avg target</TableHead>
+                    <TableHead className="text-right">#</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(
+                    [
+                      ["Last month", targetSum.lastMonthAvgPriceTarget, targetSum.lastMonthCount],
+                      ["Last quarter", targetSum.lastQuarterAvgPriceTarget, targetSum.lastQuarterCount],
+                      ["Last year", targetSum.lastYearAvgPriceTarget, targetSum.lastYearCount],
+                      ["All time", targetSum.allTimeAvgPriceTarget, targetSum.allTimeCount],
+                    ] as const
+                  ).map(([label, avg, count]) => (
+                    <TableRow key={label}>
+                      <TableCell>{label}</TableCell>
+                      <TableCell className="text-right font-mono">{money(avg)}</TableCell>
+                      <TableCell className="text-right font-mono">{count ?? "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Revenue concentration</CardTitle>
+            <CardDescription>
+              Herfindahl Σ w² on FMP geographic and product segments. HHI {geoHhi ? num(geoHhi, 3) : "—"} geo ·{" "}
+              {productHhi ? num(productHhi, 3) : "—"} product · N_eff {geoHhi ? num(effectiveSegments(geoHhi), 2) : "—"} /{" "}
+              {productHhi ? num(effectiveSegments(productHhi), 2) : "—"}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <SegmentList title="Geography" rows={geoShares} />
+            <SegmentList title="Product" rows={productShares} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Market-cap path</CardTitle>
+            <CardDescription>
+              historical-market-capitalization · {capSorted.length} prints
+              {capCagr == null ? "" : ` · CAGR ${pct(capCagr, true)} over ${num(capYears, 2)}y`}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">First / last</span>
+              <span className="font-mono">
+                {money(capFirst?.marketCap, true)} / {money(capLast?.marketCap, true)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Window</span>
+              <span className="font-mono">
+                {capFirst?.date ?? "—"} → {capLast?.date ?? "—"}
+              </span>
+            </div>
+            {capSorted.length < 2 ? (
+              <p className="text-muted-foreground">Need two market-cap prints for a CAGR.</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Size CAGR is (M_T / M_0) to the power 1/τ minus one on the FMP print, not a total-return path.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -826,6 +1015,16 @@ function lastWeekday() {
   return d.toISOString().slice(0, 10);
 }
 
+function matchIndustryPe(industry: string | undefined, rows: FmpIndustryPe[]) {
+  if (!industry) return null;
+  const key = industry.toLowerCase();
+  return (
+    rows.find((row) => row.industry.toLowerCase() === key) ??
+    rows.find((row) => row.industry.toLowerCase().includes(key) || key.includes(row.industry.toLowerCase())) ??
+    null
+  );
+}
+
 function matchSectorPe(sector: string | undefined, rows: FmpSectorPe[]) {
   if (!sector) return null;
   const key = sector.toLowerCase();
@@ -833,6 +1032,30 @@ function matchSectorPe(sector: string | undefined, rows: FmpSectorPe[]) {
     rows.find((row) => row.sector.toLowerCase() === key) ??
     rows.find((row) => row.sector.toLowerCase().includes(key) || key.includes(row.sector.toLowerCase())) ??
     null
+  );
+}
+
+function SegmentList({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: { name: string; weight: number; value: number }[];
+}) {
+  return (
+    <div className="space-y-2 text-sm">
+      <div className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">{title}</div>
+      {rows.length === 0 ? (
+        <p className="text-muted-foreground">No segment rows.</p>
+      ) : (
+        rows.slice(0, 6).map((row) => (
+          <div key={row.name} className="flex justify-between gap-3">
+            <span className="truncate">{row.name}</span>
+            <span className="font-mono">{pct(row.weight, false)}</span>
+          </div>
+        ))
+      )}
+    </div>
   );
 }
 

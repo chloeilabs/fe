@@ -23,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { fractionalKelly } from "@/lib/engine/kelly";
 import { wealthPaths } from "@/lib/engine/montecarlo";
 import { minCVaR, pathCVaR } from "@/lib/engine/cvar";
+import { treynorBlack } from "@/lib/engine/treynor-black";
 import {
   blackLitterman,
   equalWeight,
@@ -46,6 +47,7 @@ const KINDS: { id: OptimizerKind | "current"; label: string }[] = [
   { id: "max-sharpe", label: "Max Sharpe" },
   { id: "erc", label: "ERC" },
   { id: "min-cvar", label: "Min CVaR" },
+  { id: "tb", label: "Treynor–Black" },
   { id: "bl", label: "Black–Litterman" },
 ];
 
@@ -84,6 +86,23 @@ export function OptimizeView() {
     const erc = resultOf("erc", riskParity(cov), mu, cov, rf);
     const cvarW = matrix.length > 20 ? minCVaR(matrix, 0.95) : equalWeight(names.length);
     const cvar = resultOf("min-cvar", cvarW, mu, cov, rf);
+    const rfD = rf / 252;
+    const mkt = book.market;
+    const mx = mkt.length ? mkt.reduce((s, r) => s + r, 0) / mkt.length : 0;
+    const mVar =
+      mkt.length > 1 ? mkt.reduce((s, r) => s + (r - mx) ** 2, 0) / (mkt.length - 1) : 0;
+    const tbMix = treynorBlack(
+      book.nameCapm.map((row) => ({
+        alpha: row.alpha,
+        residualVar: row.residualVol ** 2,
+        beta: row.beta,
+      })),
+      mx - rfD,
+      mVar,
+      weights,
+      longOnly,
+    );
+    const tb = resultOf("tb", tbMix.weights, mu, cov, rf);
     const pi = blackLitterman(cov, weights, parsed, { delta, tau });
     const blMu = pi.map((x) => x + rf);
     const blW = maxSharpe(blMu, cov, rf, longOnly);
@@ -94,11 +113,15 @@ export function OptimizeView() {
       { ...tangency, id: "max-sharpe" as const, label: "Max Sharpe (tangency)", muUsed: mu },
       { ...erc, id: "erc" as const, label: "Equal risk contribution", muUsed: mu },
       { ...cvar, id: "min-cvar" as const, label: "Min empirical CVaR", muUsed: mu },
+      { ...tb, id: "tb" as const, label: "Treynor–Black", muUsed: mu, tb: tbMix },
       { ...bl, id: "bl" as const, label: "Black–Litterman", muUsed: blMu, pi },
     ];
-  }, [cov, delta, longOnly, matrix, mu, names.length, rf, tau, viewKey, weights]);
+  }, [book.market, book.nameCapm, cov, delta, longOnly, matrix, mu, names.length, rf, tau, viewKey, weights]);
 
   const selected = strategies.find((s) => s.id === kind) ?? strategies[0];
+  const tbDetail = strategies.find((s) => s.id === "tb") as
+    | { tb?: { wActive: number; betaActive: number; alphaActive: number } }
+    | undefined;
   const selectedCvar =
     selected && matrix.length > 8 ? pathCVaR(selected.weights, matrix, 0.95) : null;
   const frontier = useMemo(() => {
@@ -158,7 +181,8 @@ export function OptimizeView() {
         <h1 className="font-heading text-4xl tracking-tight">Mean-variance on the live book</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
           Ledoit–Wolf covariance, Markowitz GMV and tangency, Maillard–Roncalli ERC, empirical CVaR minimization,
-          Black–Litterman posterior returns, and a Student-t Monte Carlo. This is not a contribution planner.
+          Treynor–Black residual-alpha overlay, Black–Litterman posterior returns, and a Student-t Monte Carlo. This is
+          not a contribution planner.
         </p>
       </header>
 
@@ -266,8 +290,12 @@ export function OptimizeView() {
           <CardHeader>
             <CardTitle>Named portfolios</CardTitle>
             <CardDescription>
-              Sample μ and the shrunk Σ. Black–Litterman weights are solved on π = δΣw plus views; the Sharpe here is
-              still the sample moment of those weights.
+              Sample μ and the shrunk Σ. Treynor–Black mixes current weights with residual-α / σ²_ε
+              {kind === "tb" && tbDetail?.tb
+                ? ` · w_A* ${pct(tbDetail.tb.wActive, false)} · β_A ${num(tbDetail.tb.betaActive, 2)} · α_A ${pct(tbDetail.tb.alphaActive * 252, true)}`
+                : ""}
+              . Black–Litterman weights are solved on π = δΣw plus views; the Sharpe here is still the sample moment of
+              those weights.
             </CardDescription>
           </CardHeader>
           <CardContent>

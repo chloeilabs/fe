@@ -6,8 +6,17 @@ import type {
   FmpDividend,
   FmpEtfHolding,
   FmpEtfInfo,
+  FmpEtfCountry,
   FmpEtfSector,
+  FmpEnterpriseValue,
   FmpGrades,
+  FmpIndustryPe,
+  FmpIndustryPerf,
+  FmpMarketCap,
+  FmpOhlcBar,
+  FmpRevenueSegment,
+  FmpPriceTargetSummary,
+  FmpSharesFloat,
   FmpGrowth,
   FmpKeyMetrics,
   FmpOwnerEarnings,
@@ -626,6 +635,190 @@ export function sampleSectorPe(): FmpSectorPe[] {
     { date: new Date().toISOString().slice(0, 10), sector: "Energy", exchange: "NASDAQ", pe: 13.1 },
     { date: new Date().toISOString().slice(0, 10), sector: "Consumer Cyclical", exchange: "NASDAQ", pe: 24.6 },
     { date: new Date().toISOString().slice(0, 10), sector: "Utilities", exchange: "NASDAQ", pe: 18.9 },
+  ];
+}
+
+export function sampleFullHistory(symbol: string): FmpOhlcBar[] {
+  const bars = sampleHistory(symbol);
+  return bars.map((b, i) => {
+    const older = bars[i + 1];
+    const open = older?.price ?? b.price;
+    const close = b.price;
+    const high = Math.max(open, close) * 1.006;
+    const low = Math.min(open, close) * 0.994;
+    return {
+      symbol: b.symbol,
+      date: b.date,
+      open,
+      high,
+      low,
+      close,
+      volume: b.volume ?? 2e7,
+      vwap: (high + low + close) / 3,
+    };
+  });
+}
+
+export function sampleIndustryPe(): FmpIndustryPe[] {
+  const date = new Date().toISOString().slice(0, 10);
+  return [
+    { date, industry: "Consumer Electronics", exchange: "NASDAQ", pe: 32.4 },
+    { date, industry: "Software", exchange: "NASDAQ", pe: 38.1 },
+    { date, industry: "Semiconductors", exchange: "NASDAQ", pe: 41.2 },
+    { date, industry: "Internet Content", exchange: "NASDAQ", pe: 28.6 },
+    { date, industry: "Internet Retail", exchange: "NASDAQ", pe: 36.8 },
+    { date, industry: "Asset Management", exchange: "NASDAQ", pe: 22.0 },
+  ];
+}
+
+export function sampleSharesFloat(symbol: string): FmpSharesFloat | null {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return null;
+  const outstanding = spec.cap && spec.price ? spec.cap / spec.price : 1e9;
+  return {
+    symbol: symbol.toUpperCase(),
+    date: new Date().toISOString().slice(0, 10),
+    freeFloat: spec.etf ? 99.9 : 99.83,
+    floatShares: outstanding * 0.998,
+    outstandingShares: outstanding,
+  };
+}
+
+export function sampleEnterpriseValues(symbol: string): FmpEnterpriseValue[] {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return [];
+  return [2025, 2024, 2023].map((year, i) => ({
+    symbol: symbol.toUpperCase(),
+    date: `${year}-09-27`,
+    stockPrice: spec.price * (1 - i * 0.04),
+    numberOfShares: (spec.cap ?? 1e12) / spec.price,
+    marketCapitalization: (spec.cap ?? 1e12) * (1 - i * 0.03),
+    minusCashAndCashEquivalents: (spec.cap ?? 1e12) * 0.008,
+    addTotalDebt: (spec.cap ?? 1e12) * 0.025,
+    enterpriseValue: (spec.cap ?? 1e12) * 1.017 * (1 - i * 0.03),
+  }));
+}
+
+export function sampleEtfCountries(symbol: string): FmpEtfCountry[] {
+  if (symbol.toUpperCase() === "VXUS") {
+    return [
+      { country: "Japan", weightPercentage: "15.2%" },
+      { country: "United Kingdom", weightPercentage: "12.4%" },
+      { country: "Canada", weightPercentage: "8.1%" },
+      { country: "France", weightPercentage: "7.6%" },
+      { country: "Switzerland", weightPercentage: "6.9%" },
+    ];
+  }
+  return [
+    { country: "United States", weightPercentage: "97.26%" },
+    { country: "Ireland", weightPercentage: "0.82%" },
+    { country: "United Kingdom", weightPercentage: "0.41%" },
+    { country: "Switzerland", weightPercentage: "0.28%" },
+  ];
+}
+
+export function samplePriceTargetSummary(symbol: string): FmpPriceTargetSummary | null {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return null;
+  return {
+    symbol: symbol.toUpperCase(),
+    lastMonthCount: spec.etf ? 2 : 8,
+    lastMonthAvgPriceTarget: spec.price * 1.04,
+    lastQuarterCount: spec.etf ? 4 : 20,
+    lastQuarterAvgPriceTarget: spec.price * 1.03,
+    lastYearCount: spec.etf ? 6 : 67,
+    lastYearAvgPriceTarget: spec.price * 0.96,
+    allTimeCount: spec.etf ? 12 : 254,
+    allTimeAvgPriceTarget: spec.price * 0.82,
+  };
+}
+
+export function sampleDividendsCalendar(): FmpDividend[] {
+  const day = (offset: number) => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + offset);
+    return d.toISOString().slice(0, 10);
+  };
+  return [
+    { symbol: "AAPL", date: day(12), recordDate: day(13), paymentDate: day(27), adjDividend: 0.26, dividend: 0.26, yield: 0.32, frequency: "Quarterly" },
+    { symbol: "MSFT", date: day(18), recordDate: day(19), paymentDate: day(40), adjDividend: 0.83, dividend: 0.83, yield: 0.72, frequency: "Quarterly" },
+    { symbol: "VTI", date: day(8), recordDate: day(9), paymentDate: day(22), adjDividend: 0.91, dividend: 0.91, yield: 1.24, frequency: "Quarterly" },
+    { symbol: "NVDA", date: day(25), recordDate: day(26), paymentDate: day(40), adjDividend: 0.01, dividend: 0.01, yield: 0.03, frequency: "Quarterly" },
+  ];
+}
+
+export function sampleGeographicRevenue(symbol: string): FmpRevenueSegment[] {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return [];
+  const total = (spec.cap ?? 1e12) * 0.08;
+  const data =
+    symbol.toUpperCase() === "VXUS"
+      ? { Japan: total * 0.18, Europe: total * 0.42, "Emerging markets": total * 0.28, Canada: total * 0.12 }
+      : {
+          Americas: total * 0.43,
+          Europe: total * 0.27,
+          "Greater China": total * 0.15,
+          Japan: total * 0.07,
+          "Rest of Asia Pacific": total * 0.08,
+        };
+  return [
+    {
+      symbol: symbol.toUpperCase(),
+      fiscalYear: 2025,
+      period: "FY",
+      reportedCurrency: "USD",
+      date: "2025-09-27",
+      data,
+    },
+  ];
+}
+
+export function sampleProductRevenue(symbol: string): FmpRevenueSegment[] {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return [];
+  const total = (spec.cap ?? 1e12) * 0.08;
+  const data = spec.etf
+    ? { Equity: total * 0.92, "Fixed income": total * 0.05, Cash: total * 0.03 }
+    : {
+        iPhone: total * 0.51,
+        Service: total * 0.26,
+        Mac: total * 0.08,
+        iPad: total * 0.07,
+        "Wearables, Home and Accessories": total * 0.08,
+      };
+  return [
+    {
+      symbol: symbol.toUpperCase(),
+      fiscalYear: 2025,
+      period: "FY",
+      reportedCurrency: "USD",
+      date: "2025-09-27",
+      data,
+    },
+  ];
+}
+
+export function sampleHistoricalMarketCap(symbol: string, days = 260): FmpMarketCap[] {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec?.cap) return [];
+  return sampleHistory(symbol, days).map((b) => ({
+    symbol: b.symbol,
+    date: b.date,
+    marketCap: spec.cap! * (b.price / spec.price),
+  }));
+}
+
+export function sampleIndustryPerf(): FmpIndustryPerf[] {
+  const date = new Date().toISOString().slice(0, 10);
+  return [
+    { date, industry: "Consumer Electronics", exchange: "NASDAQ", averageChange: 0.62 },
+    { date, industry: "Software", exchange: "NASDAQ", averageChange: 0.41 },
+    { date, industry: "Semiconductors", exchange: "NASDAQ", averageChange: 1.18 },
+    { date, industry: "Internet Content", exchange: "NASDAQ", averageChange: -0.22 },
+    { date, industry: "Internet Retail", exchange: "NASDAQ", averageChange: 0.15 },
+    { date, industry: "Asset Management", exchange: "NASDAQ", averageChange: -0.08 },
+    { date, industry: "Biotechnology", exchange: "NASDAQ", averageChange: 0.33 },
+    { date, industry: "Banks", exchange: "NASDAQ", averageChange: -0.19 },
   ];
 }
 

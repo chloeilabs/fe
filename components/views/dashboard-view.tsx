@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 
@@ -10,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ASSET_CLASS_LABELS, classWeights, type AssetClass } from "@/lib/engine/allocation";
+import { fetchFmpOptional } from "@/lib/fmp/browser";
+import type { FmpDividend } from "@/lib/fmp/types";
 import { money, num, pct } from "@/lib/format";
 import { useBookModel } from "@/lib/hooks/use-book-model";
 import { ClientOnly } from "@/lib/hooks/use-mounted";
@@ -39,6 +42,20 @@ export function DashboardView() {
     .filter(([, w]) => w > 0.001)
     .map(([key, w]) => ({ name: ASSET_CLASS_LABELS[key], value: w }));
   const dollarVar = (book.hist.var ?? 0) * invested;
+  const [divs, setDivs] = useState<FmpDividend[]>([]);
+  const held = new Set(rows.map((r) => r.symbol));
+
+  useEffect(() => {
+    const from = new Date();
+    const to = new Date();
+    to.setUTCDate(to.getUTCDate() + 45);
+    from.setUTCDate(from.getUTCDate() - 3);
+    fetchFmpOptional<FmpDividend[]>("dividends-calendar", {
+      from: from.toISOString().slice(0, 10),
+      to: to.toISOString().slice(0, 10),
+    }).then((rows) => setDivs(rows ?? []));
+  }, []);
+  const bookDivs = divs.filter((d) => held.has(d.symbol)).slice(0, 6);
 
   return (
     <div className="space-y-6">
@@ -139,6 +156,28 @@ export function DashboardView() {
                   </li>
                 ))}
               </ul>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Upcoming dividends</CardTitle>
+              <CardDescription>FMP dividends-calendar on names in the book.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {bookDivs.length === 0 ? (
+                <p className="text-muted-foreground">No book ex-dates in the next 45 days.</p>
+              ) : (
+                bookDivs.map((row, i) => (
+                  <div key={`${row.symbol}-${row.date}-${i}`} className="flex justify-between gap-3">
+                    <Link href={`/research/${row.symbol}`} className="font-mono hover:text-primary">
+                      {row.symbol}
+                    </Link>
+                    <span className="font-mono text-muted-foreground">{row.date}</span>
+                    <span className="font-mono">{num(row.adjDividend ?? row.dividend, 2)}</span>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
 

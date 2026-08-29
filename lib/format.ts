@@ -70,6 +70,14 @@ export function isoDate(value: string | Date | null | undefined) {
   return `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
 }
 
+/** FMP etf/country-weightings sends "97.26%" strings. */
+export function parseWeightPct(raw: string | number | undefined): number {
+  if (typeof raw === "number") return Math.abs(raw) > 1.5 ? raw / 100 : raw;
+  if (!raw) return 0;
+  const n = Number(String(raw).replace(/%/g, "").trim());
+  return Number.isFinite(n) ? n / 100 : 0;
+}
+
 export function clsDelta(value: number | null | undefined) {
   if (value == null || Number.isNaN(value) || value === 0) return "text-muted-foreground";
   return value > 0 ? "text-gain" : "text-loss";
