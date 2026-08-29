@@ -44,6 +44,15 @@ describe("Engle–Granger", () => {
     close(res.alpha, 0.5, 1e-10);
     close(res.beta, 1.3, 1e-10);
     close(res.residualVol, 0, 1e-12);
+    close(res.lastZ, 0, 1e-12);
+  });
+
+  it("reports last residual in σ units", () => {
+    const x = [1, 2, 3, 4, 5, 6, 7, 8];
+    const y = [2, 4, 6, 8, 10, 12, 14, 20];
+    const res = engleGranger(y, x);
+    const last = y[y.length - 1]! - res.alpha - res.beta * x[x.length - 1]!;
+    close(res.lastZ, last / res.residualVol, 1e-10);
   });
 });
 

@@ -3,6 +3,15 @@ import type {
   FmpDcf,
   FmpCashFlow,
   FmpBalanceSheet,
+  FmpDividend,
+  FmpEtfHolding,
+  FmpEtfInfo,
+  FmpEtfSector,
+  FmpGrades,
+  FmpGrowth,
+  FmpKeyMetrics,
+  FmpOwnerEarnings,
+  FmpSectorPe,
   FmpEarnings,
   FmpEconEvent,
   FmpEconPoint,
@@ -53,6 +62,9 @@ const SPECS: Record<string, Spec> = {
   VXUS: { name: "Vanguard Total International Stock ETF", price: 64.8, prev: 64.55, exchange: "NASDAQ", sector: "Financial Services", industry: "Asset Management", cap: 7.2e10, beta: 0.86, etf: true, mu: 0.07, vol: 0.15 },
   BND: { name: "Vanguard Total Bond Market ETF", price: 73.1, prev: 73.22, exchange: "NASDAQ", sector: "Financial Services", industry: "Asset Management", cap: 1.1e11, beta: 0.18, etf: true, mu: 0.035, vol: 0.06 },
   SPY: { name: "SPDR S&P 500 ETF Trust", price: 641.2, prev: 637.8, exchange: "AMEX", sector: "Financial Services", industry: "Asset Management", cap: 5.8e11, beta: 1, etf: true, mu: 0.1, vol: 0.15 },
+  IWM: { name: "iShares Russell 2000 ETF", price: 218.4, prev: 216.9, exchange: "AMEX", sector: "Financial Services", industry: "Asset Management", cap: 6.4e10, beta: 1.15, etf: true, mu: 0.09, vol: 0.22 },
+  IWD: { name: "iShares Russell 1000 Value ETF", price: 184.2, prev: 183.6, exchange: "AMEX", sector: "Financial Services", industry: "Asset Management", cap: 5.8e10, beta: 0.92, etf: true, mu: 0.08, vol: 0.15 },
+  IWF: { name: "iShares Russell 1000 Growth ETF", price: 412.7, prev: 410.1, exchange: "AMEX", sector: "Financial Services", industry: "Asset Management", cap: 9.1e10, beta: 1.12, etf: true, mu: 0.12, vol: 0.18 },
   "^GSPC": { name: "S&P 500", price: 6418.3, prev: 6384.1, exchange: "INDEX", mu: 0.1, vol: 0.15 },
   "^DJI": { name: "Dow Jones Industrial Average", price: 44912, prev: 44780, exchange: "INDEX", mu: 0.08, vol: 0.14 },
   "^IXIC": { name: "NASDAQ Composite", price: 21440, prev: 21290, exchange: "INDEX", mu: 0.12, vol: 0.2 },
@@ -482,6 +494,136 @@ export function sampleEconCalendar(): FmpEconEvent[] {
 
 export function sampleEarningsCalendar(): FmpEarnings[] {
   return sampleEarnings("AAPL").slice(0, 2).concat(sampleEarnings("MSFT").slice(0, 1));
+}
+
+export function sampleOwnerEarnings(symbol: string): FmpOwnerEarnings[] {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return [];
+  const oe = (spec.cap ?? 0) * 0.024;
+  return [2025, 2024, 2023].map((year, i) => ({
+    symbol: symbol.toUpperCase(),
+    date: `${year}-09-27`,
+    fiscalYear: String(year),
+    period: "FY",
+    ownersEarnings: oe * (1 - i * 0.05),
+    ownersEarningsPerShare: spec.price * 0.026 * (1 - i * 0.04),
+    maintenanceCapex: oe * 0.12,
+    growthCapex: oe * 0.18,
+  }));
+}
+
+export function sampleGrades(symbol: string): FmpGrades | null {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return null;
+  return {
+    symbol: symbol.toUpperCase(),
+    strongBuy: spec.etf ? 0 : 4,
+    buy: spec.etf ? 2 : 28,
+    hold: spec.etf ? 8 : 12,
+    sell: spec.etf ? 1 : 3,
+    strongSell: 0,
+    consensus: spec.etf ? "Hold" : "Buy",
+  };
+}
+
+export function sampleKeyMetrics(symbol: string): FmpKeyMetrics[] {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return [];
+  return [2025, 2024, 2023].map((year, i) => ({
+    symbol: symbol.toUpperCase(),
+    date: `${year}-09-27`,
+    fiscalYear: String(year),
+    period: "FY",
+    returnOnEquity: spec.etf ? 0.18 : 1.47 * (1 - i * 0.04),
+    returnOnInvestedCapital: spec.etf ? 0.12 : 0.5,
+    enterpriseValue: (spec.cap ?? 0) * 1.02,
+    marketCap: spec.cap,
+    grahamNumber: spec.price * 0.11,
+    tangibleAssetValue: (spec.cap ?? 0) * 0.02,
+    freeCashFlowToFirm: (spec.cap ?? 0) * 0.028,
+  }));
+}
+
+export function sampleGrowth(symbol: string): FmpGrowth[] {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return [];
+  return [2025, 2024].map((year, i) => ({
+    symbol: symbol.toUpperCase(),
+    date: `${year}-09-27`,
+    fiscalYear: String(year),
+    revenueGrowth: spec.etf ? 0.08 : 0.064 - i * 0.01,
+    netIncomeGrowth: spec.etf ? 0.07 : 0.195 - i * 0.02,
+    epsgrowth: spec.etf ? 0.07 : 0.226,
+    freeCashFlowGrowth: spec.etf ? 0.06 : -0.09,
+    bookValueperShareGrowth: spec.etf ? 0.05 : 0.33,
+    dividendsPerShareGrowth: 0.04,
+  }));
+}
+
+export function sampleDividends(symbol: string): FmpDividend[] {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return [];
+  const dps = spec.etf ? 0.85 : 0.25;
+  return [0, 1, 2, 3].map((i) => {
+    const d = new Date();
+    d.setUTCMonth(d.getUTCMonth() - i * 3);
+    return {
+      symbol: symbol.toUpperCase(),
+      date: d.toISOString().slice(0, 10),
+      adjDividend: dps,
+      dividend: dps,
+      yield: dps * 4 / spec.price,
+      frequency: "Quarterly",
+    };
+  });
+}
+
+export function sampleEtfHoldings(symbol: string): FmpEtfHolding[] {
+  const names = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META"].filter((s) => s !== symbol.toUpperCase());
+  const w = [7.8, 6.9, 6.4, 3.8, 3.5, 2.9];
+  return names.slice(0, 6).map((asset, i) => ({
+    symbol: symbol.toUpperCase(),
+    asset,
+    name: SPECS[asset]?.name ?? asset,
+    weightPercentage: w[i] ?? 1,
+    marketValue: (SPECS[asset]?.cap ?? 1e11) * 0.01,
+  }));
+}
+
+export function sampleEtfInfo(symbol: string): FmpEtfInfo | null {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return null;
+  return {
+    symbol: symbol.toUpperCase(),
+    name: spec.name,
+    expenseRatio: 0.03,
+    assetsUnderManagement: spec.cap ?? 1e11,
+    holdingsCount: 3800,
+    assetClass: "Equity",
+    inceptionDate: "2001-05-24",
+    nav: spec.price,
+  };
+}
+
+export function sampleEtfSectors(symbol: string): FmpEtfSector[] {
+  return [
+    { symbol: symbol.toUpperCase(), sector: "Technology", weightPercentage: 31.2 },
+    { symbol: symbol.toUpperCase(), sector: "Financial Services", weightPercentage: 13.4 },
+    { symbol: symbol.toUpperCase(), sector: "Healthcare", weightPercentage: 12.1 },
+    { symbol: symbol.toUpperCase(), sector: "Consumer Cyclical", weightPercentage: 10.8 },
+    { symbol: symbol.toUpperCase(), sector: "Industrials", weightPercentage: 8.9 },
+  ];
+}
+
+export function sampleSectorPe(): FmpSectorPe[] {
+  return [
+    { date: new Date().toISOString().slice(0, 10), sector: "Technology", exchange: "NASDAQ", pe: 34.2 },
+    { date: new Date().toISOString().slice(0, 10), sector: "Healthcare", exchange: "NASDAQ", pe: 22.8 },
+    { date: new Date().toISOString().slice(0, 10), sector: "Financial Services", exchange: "NASDAQ", pe: 16.4 },
+    { date: new Date().toISOString().slice(0, 10), sector: "Energy", exchange: "NASDAQ", pe: 13.1 },
+    { date: new Date().toISOString().slice(0, 10), sector: "Consumer Cyclical", exchange: "NASDAQ", pe: 24.6 },
+    { date: new Date().toISOString().slice(0, 10), sector: "Utilities", exchange: "NASDAQ", pe: 18.9 },
+  ];
 }
 
 export const SAMPLE_UNIVERSE = Object.keys(SPECS);

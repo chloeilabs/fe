@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { fractionalKelly } from "@/lib/engine/kelly";
 import { wealthPaths } from "@/lib/engine/montecarlo";
+import { minCVaR, pathCVaR } from "@/lib/engine/cvar";
 import {
   blackLitterman,
   equalWeight,
@@ -44,6 +45,7 @@ const KINDS: { id: OptimizerKind | "current"; label: string }[] = [
   { id: "gmv", label: "GMV" },
   { id: "max-sharpe", label: "Max Sharpe" },
   { id: "erc", label: "ERC" },
+  { id: "min-cvar", label: "Min CVaR" },
   { id: "bl", label: "Black–Litterman" },
 ];
 
@@ -59,7 +61,7 @@ export function OptimizeView() {
   const [views, setViews] = useState<Record<string, { q: string; conf: string }>>({});
 
   const rf = rfPct / 100;
-  const { names, weights, packed, invested, quotes, state } = book;
+  const { names, weights, packed, invested, quotes, state, matrix } = book;
   const mu = packed.mu;
   const cov = packed.cov;
 
@@ -80,6 +82,8 @@ export function OptimizeView() {
     const gmv = resultOf("gmv", globalMinVariance(cov, longOnly), mu, cov, rf);
     const tangency = resultOf("max-sharpe", maxSharpe(mu, cov, rf, longOnly), mu, cov, rf);
     const erc = resultOf("erc", riskParity(cov), mu, cov, rf);
+    const cvarW = matrix.length > 20 ? minCVaR(matrix, 0.95) : equalWeight(names.length);
+    const cvar = resultOf("min-cvar", cvarW, mu, cov, rf);
     const pi = blackLitterman(cov, weights, parsed, { delta, tau });
     const blMu = pi.map((x) => x + rf);
     const blW = maxSharpe(blMu, cov, rf, longOnly);
@@ -89,11 +93,14 @@ export function OptimizeView() {
       { ...gmv, id: "gmv" as const, label: "Global min variance", muUsed: mu },
       { ...tangency, id: "max-sharpe" as const, label: "Max Sharpe (tangency)", muUsed: mu },
       { ...erc, id: "erc" as const, label: "Equal risk contribution", muUsed: mu },
+      { ...cvar, id: "min-cvar" as const, label: "Min empirical CVaR", muUsed: mu },
       { ...bl, id: "bl" as const, label: "Black–Litterman", muUsed: blMu, pi },
     ];
-  }, [cov, delta, longOnly, mu, names.length, rf, tau, viewKey, weights]);
+  }, [cov, delta, longOnly, matrix, mu, names.length, rf, tau, viewKey, weights]);
 
   const selected = strategies.find((s) => s.id === kind) ?? strategies[0];
+  const selectedCvar =
+    selected && matrix.length > 8 ? pathCVaR(selected.weights, matrix, 0.95) : null;
   const frontier = useMemo(() => {
     if (!cov.length) return [];
     const pts = longOnly
@@ -150,8 +157,8 @@ export function OptimizeView() {
         <p className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">Optimize</p>
         <h1 className="font-heading text-4xl tracking-tight">Mean-variance on the live book</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Ledoit–Wolf covariance, Markowitz GMV and tangency, Maillard–Roncalli ERC, Black–Litterman posterior
-          returns, and a Student-t Monte Carlo. This is not a contribution planner.
+          Ledoit–Wolf covariance, Markowitz GMV and tangency, Maillard–Roncalli ERC, empirical CVaR minimization,
+          Black–Litterman posterior returns, and a Student-t Monte Carlo. This is not a contribution planner.
         </p>
       </header>
 
@@ -172,7 +179,7 @@ export function OptimizeView() {
         <Kpi
           label="Selected Sharpe"
           value={num(selected?.sharpe, 2)}
-          hint={selected?.label}
+          hint={`${selected?.label ?? "—"} · 95% CVaR ${selectedCvar == null ? "—" : pct(selectedCvar, false)}`}
         />
         <Kpi
           label="½-Kelly fraction"

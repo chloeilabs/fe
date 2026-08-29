@@ -15,7 +15,7 @@ import {
   vecScale,
 } from "@/lib/engine/matrix";
 
-export type OptimizerKind = "gmv" | "max-sharpe" | "erc" | "equal" | "bl";
+export type OptimizerKind = "gmv" | "max-sharpe" | "erc" | "equal" | "bl" | "min-cvar";
 
 export type OptimizeResult = {
   weights: number[];

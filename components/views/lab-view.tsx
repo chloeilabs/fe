@@ -34,9 +34,9 @@ import {
   treasuryToCurve,
 } from "@/lib/engine/nelson-siegel";
 import { portfolioReturns, sortedBars } from "@/lib/engine/risk";
-import { fetchFmp } from "@/lib/fmp/browser";
-import type { FmpLightBar, FmpTreasury } from "@/lib/fmp/types";
-import { num, pct } from "@/lib/format";
+import { fetchFmp, fetchFmpOptional } from "@/lib/fmp/browser";
+import type { FmpEtfHolding, FmpEtfInfo, FmpEtfSector, FmpLightBar, FmpTreasury } from "@/lib/fmp/types";
+import { money, num, pct } from "@/lib/format";
 import { useBookModel } from "@/lib/hooks/use-book-model";
 import { ClientOnly } from "@/lib/hooks/use-mounted";
 
@@ -47,12 +47,36 @@ export function LabView() {
   const book = useBookModel();
   const [treasury, setTreasury] = useState<FmpTreasury | null>(null);
   const [proxyReturns, setProxyReturns] = useState<Record<string, number[]>>({});
+  const [etfInfo, setEtfInfo] = useState<FmpEtfInfo | null>(null);
+  const [etfHoldings, setEtfHoldings] = useState<FmpEtfHolding[]>([]);
+  const [etfSectors, setEtfSectors] = useState<FmpEtfSector[]>([]);
+  const etfSymbol = useMemo(() => {
+    const etfs = book.valued.filter((h) => ["VTI", "VXUS", "BND", "SPY", "IWM"].includes(h.symbol));
+    return [...etfs].sort((a, b) => b.value - a.value)[0]?.symbol ?? "VTI";
+  }, [book.valued]);
 
   useEffect(() => {
     fetchFmp<FmpTreasury[]>("treasury-rates").then((res) => {
       setTreasury(res.data?.[0] ?? null);
     });
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetchFmpOptional<FmpEtfInfo[]>("etf/info", { symbol: etfSymbol }),
+      fetchFmpOptional<FmpEtfHolding[]>("etf/holdings", { symbol: etfSymbol }),
+      fetchFmpOptional<FmpEtfSector[]>("etf/sector-weightings", { symbol: etfSymbol }),
+    ]).then(([info, holds, sectors]) => {
+      if (cancelled) return;
+      setEtfInfo(info?.[0] ?? null);
+      setEtfHoldings((holds ?? []).slice(0, 8));
+      setEtfSectors((sectors ?? []).slice(0, 8));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [etfSymbol]);
 
   useEffect(() => {
     const missing = PROXY_SYMBOLS.filter((s) => !(book.returns[s]?.length));
@@ -166,8 +190,9 @@ export function LabView() {
         <p className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">Lab</p>
         <h1 className="font-heading text-4xl tracking-tight">Engines on the live book</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          GARCH(1,1) on the value-weighted book, Nelson–Siegel on the Treasury curve, Engle–Granger on log prices,
-          Brinson–Fachler versus your policy mix, and a walk-forward of EW / GMV / max-Sharpe / ERC.
+          GARCH(1,1) on the value-weighted book, Nelson–Siegel on the Treasury curve, Engle–Granger on log prices
+          (with last z), Brinson–Fachler versus your policy mix, a walk-forward of EW / GMV / max-Sharpe / ERC, and
+          ETF look-through.
         </p>
       </header>
       {book.error ? <p className="text-sm text-destructive">{book.error}</p> : null}
@@ -262,6 +287,7 @@ export function LabView() {
                   <TableHead className="text-right">ADF</TableHead>
                   <TableHead className="text-right">Half-life</TableHead>
                   <TableHead className="text-right">σ(e)</TableHead>
+                  <TableHead className="text-right">z</TableHead>
                   <TableHead className="text-right">5%</TableHead>
                 </TableRow>
               </TableHeader>
@@ -277,6 +303,7 @@ export function LabView() {
                       {Number.isFinite(row.result.halfLife) ? `${num(row.result.halfLife, 1)}d` : "—"}
                     </TableCell>
                     <TableCell className="text-right font-mono">{num(row.result.residualVol, 4)}</TableCell>
+                    <TableCell className="text-right font-mono">{num(row.result.lastZ, 2)}</TableCell>
                     <TableCell className="text-right">{row.result.cointegrated ? "reject" : "fail"}</TableCell>
                   </TableRow>
                 ))}
@@ -358,6 +385,44 @@ export function LabView() {
               </LineChart>
             </ResponsiveContainer>
           </ClientOnly>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Look-through · {etfSymbol}</CardTitle>
+          <CardDescription>
+            FMP etf/info, etf/holdings, etf/sector-weightings. Expense{" "}
+            {etfInfo?.expenseRatio != null ? `${num(etfInfo.expenseRatio, 2)}%` : "—"} · AUM{" "}
+            {etfInfo?.assetsUnderManagement != null ? money(etfInfo.assetsUnderManagement, true) : "—"} · holdings{" "}
+            {etfInfo?.holdingsCount ?? "—"}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-2">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Holding</TableHead>
+                <TableHead className="text-right">Weight</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {etfHoldings.map((row) => (
+                <TableRow key={row.asset ?? row.name}>
+                  <TableCell className="font-mono">{row.asset ?? row.name}</TableCell>
+                  <TableCell className="text-right font-mono">{pct((row.weightPercentage ?? 0) / 100, false)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <div className="space-y-2 text-sm">
+            {etfSectors.map((row) => (
+              <div key={row.sector} className="flex justify-between">
+                <span>{row.sector}</span>
+                <span className="font-mono">{pct(row.weightPercentage / 100, false)}</span>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>

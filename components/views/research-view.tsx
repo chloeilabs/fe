@@ -17,9 +17,15 @@ import { fetchFmp, fetchFmpOptional } from "@/lib/fmp/browser";
 import { ClientOnly } from "@/lib/hooks/use-mounted";
 import { standardizedSurprises } from "@/lib/engine/attribution";
 import { twoStageFcff, waccFromCapm } from "@/lib/engine/dcf";
+import { carTStat, earningsCars } from "@/lib/engine/eventstudy";
+import { dividendDiscount, residualIncome } from "@/lib/engine/residual-income";
 import type {
   FmpBalanceSheet,
   FmpCashFlow,
+  FmpDividend,
+  FmpGrades,
+  FmpGrowth,
+  FmpOwnerEarnings,
   FmpDcf,
   FmpEarnings,
   FmpEstimate,
@@ -36,6 +42,7 @@ import type {
   FmpRatiosTtm,
   FmpRiskPremium,
   FmpScore,
+  FmpSectorPe,
 } from "@/lib/fmp/types";
 import { money, num, pct } from "@/lib/format";
 import { usePortfolio } from "@/lib/portfolio/store";
@@ -47,8 +54,8 @@ export function ResearchHome() {
         <p className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">Research</p>
         <h1 className="font-heading text-4xl tracking-tight">Look through the security</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Quotes, two-stage FCFF, TTM ratios, scores, analyst estimates, SUE, and price targets from FMP stable
-          endpoints.
+          Quotes, two-stage FCFF, residual income, Gordon DPS, owner earnings, grades, SUE, and market-adjusted
+          earnings CARs from FMP stable endpoints.
         </p>
       </header>
       <SymbolSearch autoFocus />
@@ -77,6 +84,12 @@ export function ResearchView({ symbol }: { symbol: string }) {
   const [target, setTarget] = useState<FmpPriceTarget | null>(null);
   const [rating, setRating] = useState<FmpRating | null>(null);
   const [erpUs, setErpUs] = useState<number | null>(null);
+  const [ownerEarn, setOwnerEarn] = useState<FmpOwnerEarnings[]>([]);
+  const [grades, setGrades] = useState<FmpGrades | null>(null);
+  const [growth, setGrowth] = useState<FmpGrowth[]>([]);
+  const [dividends, setDividends] = useState<FmpDividend[]>([]);
+  const [spyHistory, setSpyHistory] = useState<FmpLightBar[]>([]);
+  const [sectorPe, setSectorPe] = useState<FmpSectorPe[]>([]);
   const erpSeeded = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [dcfInputs, setDcfInputs] = useState({
@@ -122,13 +135,19 @@ export function ResearchView({ symbol }: { symbol: string }) {
         setChange(ch.data?.[0] ?? null);
         setError(null);
 
-        const [est, earn, tgt, rat, prem, bs] = await Promise.all([
+        const [est, earn, tgt, rat, prem, bs, oe, gr, grow, divs, spy, pe] = await Promise.all([
           fetchFmpOptional<FmpEstimate[]>("analyst-estimates", { symbol, period: "annual", limit: 6 }),
           fetchFmpOptional<FmpEarnings[]>("earnings", { symbol, limit: 12 }),
           fetchFmpOptional<FmpPriceTarget[]>("price-target-consensus", { symbol }),
           fetchFmpOptional<FmpRating[]>("ratings-snapshot", { symbol }),
           fetchFmpOptional<FmpRiskPremium[]>("market-risk-premium"),
           fetchFmpOptional<FmpBalanceSheet[]>("balance-sheet-statement", { symbol, period: "annual", limit: 3 }),
+          fetchFmpOptional<FmpOwnerEarnings[]>("owner-earnings", { symbol, limit: 6 }),
+          fetchFmpOptional<FmpGrades[]>("grades-consensus", { symbol }),
+          fetchFmpOptional<FmpGrowth[]>("financial-growth", { symbol, period: "annual", limit: 4 }),
+          fetchFmpOptional<FmpDividend[]>("dividends", { symbol, limit: 8 }),
+          fetchFmpOptional<FmpLightBar[]>("historical-price-eod/light", { symbol: "SPY" }),
+          fetchFmpOptional<FmpSectorPe[]>("sector-pe-snapshot", { date: lastWeekday(), exchange: "NASDAQ" }),
         ]);
         if (cancelled) return;
         setEstimates(est ?? []);
@@ -136,6 +155,12 @@ export function ResearchView({ symbol }: { symbol: string }) {
         setTarget(tgt?.[0] ?? null);
         setRating(rat?.[0] ?? null);
         setBalance(bs ?? []);
+        setOwnerEarn(oe ?? []);
+        setGrades(gr?.[0] ?? null);
+        setGrowth(grow ?? []);
+        setDividends(divs ?? []);
+        setSpyHistory(spy ?? []);
+        setSectorPe(pe ?? []);
         const us = (prem ?? []).find((row) => /united states/i.test(row.country));
         if (us?.totalEquityRiskPremium != null) setErpUs(us.totalEquityRiskPremium);
       } catch (err) {
@@ -204,6 +229,41 @@ export function ResearchView({ symbol }: { symbol: string }) {
   const lastSue = sue[0];
   const targetUpside =
     target?.targetConsensus && price ? target.targetConsensus / price - 1 : null;
+  const ke = dcfInputs.rf / 100 + (profile?.beta ?? 1) * (dcfInputs.erp / 100);
+  const bookValue =
+    (balance[0]?.totalStockholdersEquity ?? 0) / Math.max(sharesOut || 1, 1e-9);
+  const roe = Number(ratios?.returnOnEquityTTM) || 0;
+  const bookG = Number(growth[0]?.bookValueperShareGrowth) || dcfInputs.gStable / 100;
+  const ri = bookValue
+    ? residualIncome({
+        bookValue,
+        roe,
+        costEquity: ke,
+        growth: Math.min(bookG, ke - 0.005),
+        years: dcfInputs.years,
+      })
+    : null;
+  const ttmDps = dividends.slice(0, 4).reduce((s, row) => s + (row.adjDividend ?? row.dividend ?? 0), 0);
+  const ddm = ttmDps > 0 ? dividendDiscount(ttmDps, ke, dcfInputs.gStable / 100) : null;
+  const cars = earningsCars(
+    history,
+    spyHistory,
+    earnings.map((e) => e.date),
+    1,
+    1,
+  );
+  const printedCars = cars.filter((c) => earnings.find((e) => e.date === c.date)?.epsActual != null);
+  const carStat = carTStat(printedCars);
+  const namePe = Number(ratios?.priceToEarningsRatioTTM) || 0;
+  const sectorRow = matchSectorPe(profile?.sector, sectorPe);
+  const peVsSector = namePe && sectorRow?.pe ? namePe / sectorRow.pe - 1 : null;
+  const latestGrowth = growth[0];
+  const gradeTotal =
+    (grades?.strongBuy ?? 0) +
+    (grades?.buy ?? 0) +
+    (grades?.hold ?? 0) +
+    (grades?.sell ?? 0) +
+    (grades?.strongSell ?? 0);
 
   return (
     <div className="space-y-6">
@@ -282,6 +342,32 @@ export function ResearchView({ symbol }: { symbol: string }) {
           label="Last SUE"
           value={lastSue ? num(lastSue.sue, 2) : "—"}
           hint={lastSue ? `surprise ${num(lastSue.surprise, 2)} · ${lastSue.date}` : "Need actual vs estimate"}
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat
+          label="Residual income"
+          value={ri ? money(ri.equityValue) : "—"}
+          hint={
+            ri
+              ? `B ${money(bookValue)} · ROE ${pct(roe, false)} · r ${pct(ke, false)}`
+              : "Needs book / share and TTM EPS"
+          }
+        />
+        <Stat
+          label="RI vs last"
+          value={ri && price ? money(ri.equityValue - price) : "—"}
+          hint={ri ? `PV residual ${money(ri.pvResidual)} + TV ${money(ri.pvTerminal)}` : "Edwards–Bell–Ohlson"}
+        />
+        <Stat
+          label="Gordon DPS"
+          value={ddm != null ? money(ddm) : "—"}
+          hint={ttmDps > 0 ? `TTM DPS ${money(ttmDps)} / (r − g)` : "Needs dividend history"}
+        />
+        <Stat
+          label="Mean CAR"
+          value={printedCars.length ? pct(carStat.mean, true) : "—"}
+          hint={`Market-adj. [−1,+1] · t ${printedCars.length > 1 ? num(carStat.t, 2) : "—"} · n ${carStat.n}`}
         />
       </div>
 
@@ -366,6 +452,14 @@ export function ResearchView({ symbol }: { symbol: string }) {
                 ETF cash-flow DCF is a diagnostic, not an operating-company model.
               </p>
             ) : null}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">P/E vs sector</span>
+              <span className="font-mono">
+                {peVsSector == null
+                  ? "—"
+                  : `${num(namePe, 1)} / ${num(sectorRow?.pe, 1)} (${pct(peVsSector, true)})`}
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -472,6 +566,183 @@ export function ResearchView({ symbol }: { symbol: string }) {
         </Card>
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Residual income</CardTitle>
+            <CardDescription>
+              V₀ = B₀ + Σ (ROE − r) Bₜ₋₁ / (1+r)ᵗ + TV. Book grows at min(book g, r − 50bp). Clean surplus if payout =
+              1 − g/ROE.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Book / share</span>
+              <span className="font-mono">{money(bookValue)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">ROE TTM · cost of equity</span>
+              <span className="font-mono">
+                {pct(roe, false)} · {pct(ke, false)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Growth used</span>
+              <span className="font-mono">{pct(Math.min(bookG, ke - 0.005), false)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">PV residual + PV terminal</span>
+              <span className="font-mono">
+                {money(ri?.pvResidual)} + {money(ri?.pvTerminal)}
+              </span>
+            </div>
+            <div className="flex justify-between font-medium">
+              <span>Equity value / last</span>
+              <span className="font-mono">
+                {money(ri?.equityValue)} / {money(price)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Gordon DPS</span>
+              <span className="font-mono">{ddm != null ? money(ddm) : "—"}</span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Owner earnings</CardTitle>
+            <CardDescription>FMP owner-earnings. Buffett: NI + D&amp;A − maintenance capex.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {ownerEarn.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No owner-earnings rows for this symbol.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>FY</TableHead>
+                    <TableHead className="text-right">OE</TableHead>
+                    <TableHead className="text-right">OE / sh</TableHead>
+                    <TableHead className="text-right">Maint. capex</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ownerEarn.slice(0, 5).map((row, i) => (
+                    <TableRow key={`${row.date ?? row.fiscalYear}-${i}`}>
+                      <TableCell>{row.fiscalYear ?? row.date}</TableCell>
+                      <TableCell className="text-right font-mono">{money(row.ownersEarnings, true)}</TableCell>
+                      <TableCell className="text-right font-mono">{num(row.ownersEarningsPerShare, 2)}</TableCell>
+                      <TableCell className="text-right font-mono">{money(row.maintenanceCapex, true)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Grades consensus</CardTitle>
+            <CardDescription>
+              FMP grades-consensus{grades?.consensus ? ` · ${grades.consensus}` : ""}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!grades ? (
+              <p className="text-sm text-muted-foreground">No grade counts for this symbol.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Grade</TableHead>
+                    <TableHead className="text-right">Count</TableHead>
+                    <TableHead className="text-right">Share</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(
+                    [
+                      ["Strong buy", grades.strongBuy],
+                      ["Buy", grades.buy],
+                      ["Hold", grades.hold],
+                      ["Sell", grades.sell],
+                      ["Strong sell", grades.strongSell],
+                    ] as const
+                  ).map(([label, count]) => (
+                    <TableRow key={label}>
+                      <TableCell>{label}</TableCell>
+                      <TableCell className="text-right font-mono">{count ?? 0}</TableCell>
+                      <TableCell className="text-right font-mono">
+                        {gradeTotal ? pct((count ?? 0) / gradeTotal, false) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Financial growth</CardTitle>
+            <CardDescription>FMP financial-growth, annual. Latest {latestGrowth?.date ?? "—"}.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!latestGrowth ? (
+              <p className="text-sm text-muted-foreground">No growth rows for this symbol.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <GrowthCell label="Revenue" value={latestGrowth.revenueGrowth} />
+                <GrowthCell label="Net income" value={latestGrowth.netIncomeGrowth} />
+                <GrowthCell label="EPS" value={latestGrowth.epsgrowth} />
+                <GrowthCell label="FCF" value={latestGrowth.freeCashFlowGrowth} />
+                <GrowthCell label="Book / share" value={latestGrowth.bookValueperShareGrowth} />
+                <GrowthCell label="DPS" value={latestGrowth.dividendsPerShareGrowth} />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Earnings CAR</CardTitle>
+          <CardDescription>
+            Market-adjusted ARₜ = rᵢ − r_SPY on [−1, +1] around each print with an actual EPS. Mean CAR{" "}
+            {printedCars.length ? pct(carStat.mean, true) : "—"} · t {printedCars.length > 1 ? num(carStat.t, 2) : "—"}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {printedCars.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Need overlapping price history and EPS actuals.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead className="text-right">AR₀</TableHead>
+                  <TableHead className="text-right">CAR</TableHead>
+                  <TableHead className="text-right">Days</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {printedCars.slice(0, 8).map((row) => (
+                  <TableRow key={row.date}>
+                    <TableCell>{row.date}</TableCell>
+                    <TableCell className="text-right font-mono">{pct(row.ar0, true)}</TableCell>
+                    <TableCell className="text-right font-mono">{pct(row.car, true)}</TableCell>
+                    <TableCell className="text-right font-mono">{row.n}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Income statement</CardTitle>
@@ -535,6 +806,31 @@ export function ResearchView({ symbol }: { symbol: string }) {
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function lastWeekday() {
+  const d = new Date();
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function matchSectorPe(sector: string | undefined, rows: FmpSectorPe[]) {
+  if (!sector) return null;
+  const key = sector.toLowerCase();
+  return (
+    rows.find((row) => row.sector.toLowerCase() === key) ??
+    rows.find((row) => row.sector.toLowerCase().includes(key) || key.includes(row.sector.toLowerCase())) ??
+    null
+  );
+}
+
+function GrowthCell({ label, value }: { label: string; value?: number }) {
+  return (
+    <div className="rounded-lg bg-muted/40 p-2">
+      <div className="text-[11px] text-muted-foreground uppercase">{label}</div>
+      <div className="font-mono">{pct(value, true)}</div>
     </div>
   );
 }

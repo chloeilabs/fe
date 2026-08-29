@@ -4,6 +4,15 @@ import {
   sampleBalanceSheet,
   sampleCashFlow,
   sampleDcf,
+  sampleDividends,
+  sampleEtfHoldings,
+  sampleEtfInfo,
+  sampleEtfSectors,
+  sampleGrades,
+  sampleGrowth,
+  sampleKeyMetrics,
+  sampleOwnerEarnings,
+  sampleSectorPe,
   sampleEarnings,
   sampleEarningsCalendar,
   sampleEconCalendar,
@@ -115,7 +124,23 @@ function fromSample(path: AllowedFmpPath, params: Record<string, string>): unkno
     case "balance-sheet-statement":
       return symbol ? sampleBalanceSheet(symbol) : [];
     case "dividends":
-      return [];
+      return symbol ? sampleDividends(symbol) : [];
+    case "owner-earnings":
+      return symbol ? sampleOwnerEarnings(symbol) : [];
+    case "grades-consensus":
+      return symbol ? [sampleGrades(symbol)].filter(Boolean) : [];
+    case "key-metrics":
+      return symbol ? sampleKeyMetrics(symbol) : [];
+    case "financial-growth":
+      return symbol ? sampleGrowth(symbol) : [];
+    case "etf/holdings":
+      return symbol ? sampleEtfHoldings(symbol) : [];
+    case "etf/info":
+      return symbol ? [sampleEtfInfo(symbol)].filter(Boolean) : [];
+    case "etf/sector-weightings":
+      return symbol ? sampleEtfSectors(symbol) : [];
+    case "sector-pe-snapshot":
+      return sampleSectorPe();
     case "economic-indicators":
       return sampleEconIndicator(params.name ?? "CPI");
     case "economic-calendar":

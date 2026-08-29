@@ -1,19 +1,45 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { Kpi } from "@/components/kpi";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { annualizeAlpha } from "@/lib/engine/capm";
-import { calmarRatio, effectiveN, maxDrawdown, sortinoRatio } from "@/lib/engine/risk";
+import { annualizeAlphaDaily, famaFrench3, makeHml, makeSmb } from "@/lib/engine/factors";
+import { alignedReturns, calmarRatio, effectiveN, maxDrawdown, sortinoRatio } from "@/lib/engine/risk";
 import { dollarVaR } from "@/lib/engine/var";
+import { fetchFmp } from "@/lib/fmp/browser";
+import type { FmpLightBar } from "@/lib/fmp/types";
 import { money, num, pct } from "@/lib/format";
 import { useBookModel } from "@/lib/hooks/use-book-model";
 import { ClientOnly } from "@/lib/hooks/use-mounted";
 
+const FF_PROXY = ["IWM", "IWD", "IWF"] as const;
+
 export function RiskView() {
   const book = useBookModel();
+  const [ffBars, setFfBars] = useState<Record<string, FmpLightBar[]>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(FF_PROXY.map((symbol) => fetchFmp<FmpLightBar[]>("historical-price-eod/light", { symbol })))
+      .then((rows) => {
+        if (cancelled) return;
+        const next: Record<string, FmpLightBar[]> = {};
+        FF_PROXY.forEach((symbol, i) => {
+          next[symbol] = rows[i]?.data ?? [];
+        });
+        setFfBars(next);
+      })
+      .catch(() => {
+        if (!cancelled) setFfBars({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const wealthBars = book.port.reduce<{ date: string; price: number }[]>((acc, r, i) => {
     const prev = acc[acc.length - 1]?.price ?? 100;
     acc.push({ date: String(i), price: prev * (1 + r) });
@@ -31,6 +57,24 @@ export function RiskView() {
       .filter((_, i, arr) => i % step === 0 || i === arr.length - 1);
   })();
   const lastKalman = book.kalmanBetas[book.kalmanBetas.length - 1];
+  const ff = useMemo(() => {
+    const series = { ...book.series, ...ffBars };
+    const { returns } = alignedReturns(series);
+    const spy = returns.SPY ?? book.market;
+    const iwm = returns.IWM ?? [];
+    const iwd = returns.IWD ?? [];
+    const iwf = returns.IWF ?? [];
+    if (spy.length < 30 || iwm.length < 30 || iwd.length < 30 || iwf.length < 30) return null;
+    const smb = makeSmb(iwm, spy);
+    const hml = makeHml(iwd, iwf);
+    const rfD = 0.043 / 252;
+    const bookFf = famaFrench3(book.port, spy, smb, hml, rfD);
+    const names = book.names.map((symbol) => ({
+      symbol,
+      ...famaFrench3(returns[symbol] ?? [], spy, smb, hml, rfD),
+    }));
+    return { bookFf, names };
+  }, [book.market, book.names, book.port, book.series, ffBars]);
 
   return (
     <div className="space-y-6">
@@ -39,7 +83,7 @@ export function RiskView() {
         <h1 className="font-heading text-4xl tracking-tight">VaR, factors, and CAPM</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
           Historical, Gaussian, and Cornish–Fisher VaR on the value-weighted book; EWMA (λ=0.94) vol; Jacobi PCA on
-          the shrunk correlation matrix; OLS α/β versus SPY; scalar Kalman β.
+          the shrunk correlation matrix; OLS α/β versus SPY; scalar Kalman β; Fama–French 3-factor via IWM / IWD / IWF.
         </p>
       </header>
       {book.error ? <p className="text-sm text-destructive">{book.error}</p> : null}
@@ -125,6 +169,53 @@ export function RiskView() {
               </LineChart>
             </ResponsiveContainer>
           </ClientOnly>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Fama–French 3-factor</CardTitle>
+          <CardDescription>
+            Daily OLS: r − r_f = α + β_m (SPY − r_f) + β_s (IWM − SPY) + β_h (IWD − IWF). Book α{" "}
+            {ff ? pct(annualizeAlphaDaily(ff.bookFf.alpha), true) : "—"} · R² {ff ? num(ff.bookFf.r2, 2) : "—"}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!ff ? (
+            <p className="text-sm text-muted-foreground">Loading IWM / IWD / IWF histories for SMB and HML…</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="text-right">α (ann.)</TableHead>
+                  <TableHead className="text-right">β_m</TableHead>
+                  <TableHead className="text-right">β_s</TableHead>
+                  <TableHead className="text-right">β_h</TableHead>
+                  <TableHead className="text-right">R²</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell>Book</TableCell>
+                  <TableCell className="text-right font-mono">{pct(annualizeAlphaDaily(ff.bookFf.alpha), true)}</TableCell>
+                  <TableCell className="text-right font-mono">{num(ff.bookFf.mkt, 2)}</TableCell>
+                  <TableCell className="text-right font-mono">{num(ff.bookFf.smb, 2)}</TableCell>
+                  <TableCell className="text-right font-mono">{num(ff.bookFf.hml, 2)}</TableCell>
+                  <TableCell className="text-right font-mono">{num(ff.bookFf.r2, 2)}</TableCell>
+                </TableRow>
+                {ff.names.map((row) => (
+                  <TableRow key={row.symbol}>
+                    <TableCell className="font-mono">{row.symbol}</TableCell>
+                    <TableCell className="text-right font-mono">{pct(annualizeAlphaDaily(row.alpha), true)}</TableCell>
+                    <TableCell className="text-right font-mono">{num(row.mkt, 2)}</TableCell>
+                    <TableCell className="text-right font-mono">{num(row.smb, 2)}</TableCell>
+                    <TableCell className="text-right font-mono">{num(row.hml, 2)}</TableCell>
+                    <TableCell className="text-right font-mono">{num(row.r2, 2)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
       <div className="grid gap-4 lg:grid-cols-2">

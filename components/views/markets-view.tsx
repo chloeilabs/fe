@@ -17,6 +17,7 @@ import type {
   FmpMover,
   FmpQuote,
   FmpSector,
+  FmpSectorPe,
   FmpTreasury,
 } from "@/lib/fmp/types";
 import { money, num } from "@/lib/format";
@@ -48,6 +49,7 @@ export function MarketsView() {
   const [unemp, setUnemp] = useState<FmpEconPoint | null>(null);
   const [fed, setFed] = useState<FmpEconPoint | null>(null);
   const [econ, setEcon] = useState<FmpEconEvent[]>([]);
+  const [sectorPe, setSectorPe] = useState<FmpSectorPe[]>([]);
 
   useEffect(() => {
     const date = lastWeekday();
@@ -75,10 +77,12 @@ export function MarketsView() {
         from: isoShift(-10),
         to: isoShift(21),
       }),
-    ]).then(([c, u, f, cal]) => {
+      fetchFmpOptional<FmpSectorPe[]>("sector-pe-snapshot", { date, exchange: "NASDAQ" }),
+    ]).then(([c, u, f, cal, pe]) => {
       setCpi(c?.[0] ?? null);
       setUnemp(u?.[0] ?? null);
       setFed(f?.[0] ?? null);
+      setSectorPe(pe ?? []);
       setEcon(
         (cal ?? [])
           .slice()
@@ -108,7 +112,7 @@ export function MarketsView() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">The tape</p>
-          <h1 className="font-heading text-4xl tracking-tight">Markets and the risk-free curve</h1>
+          <h1 className="font-heading text-4xl tracking-tight">Markets, sector P/E, and the curve</h1>
         </div>
         {hours ? (
           <div className="text-sm text-muted-foreground">
@@ -121,7 +125,7 @@ export function MarketsView() {
           <IndexCard key={sym} quote={quotes[sym]} fallback={sym} />
         ))}
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Sector snapshot</CardTitle>
@@ -134,6 +138,24 @@ export function MarketsView() {
                 <DeltaFromPercent value={row.averageChange} />
               </div>
             ))}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Sector P/E</CardTitle>
+            <CardDescription>FMP sector-pe-snapshot · NASDAQ · {lastWeekday()}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {sectorPe.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No sector P/E rows for this date.</p>
+            ) : (
+              sectorPe.map((row) => (
+                <div key={`${row.sector}-${row.exchange ?? ""}`} className="flex items-center justify-between text-sm">
+                  <span>{row.sector}</span>
+                  <span className="font-mono tabular-nums">{num(row.pe, 1)}</span>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
         <Card>

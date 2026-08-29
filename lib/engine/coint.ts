@@ -6,6 +6,7 @@ export type CointResult = {
   adf: number;
   residualVol: number;
   halfLife: number;
+  lastZ: number;
   n: number;
   cointegrated: boolean;
 };
@@ -64,12 +65,14 @@ export function engleGranger(y: number[], x: number[]): CointResult {
   }
   const rho = rhoDen > 1e-18 ? rhoNum / rhoDen : 0;
   const halfLife = rho < 1 && rho > 0 ? Math.log(2) / -Math.log(rho) : Infinity;
+  const last = resid[resid.length - 1] ?? 0;
   return {
     alpha,
     beta,
     adf,
     residualVol,
     halfLife,
+    lastZ: residualVol > 1e-12 ? last / residualVol : 0,
     n,
     cointegrated: adf < -3.34,
   };

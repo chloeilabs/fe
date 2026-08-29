@@ -308,6 +308,88 @@ export type FmpEconPoint = {
   value: number;
 };
 
+export type FmpOwnerEarnings = {
+  symbol: string;
+  date?: string;
+  fiscalYear?: string;
+  period?: string;
+  ownersEarnings?: number;
+  ownersEarningsPerShare?: number;
+  maintenanceCapex?: number;
+  growthCapex?: number;
+};
+
+export type FmpGrades = {
+  symbol: string;
+  strongBuy?: number;
+  buy?: number;
+  hold?: number;
+  sell?: number;
+  strongSell?: number;
+  consensus?: string;
+};
+
+export type FmpKeyMetrics = {
+  symbol: string;
+  date?: string;
+  fiscalYear?: string;
+  period?: string;
+  returnOnEquity?: number;
+  returnOnInvestedCapital?: number;
+  enterpriseValue?: number;
+  marketCap?: number;
+  grahamNumber?: number;
+  tangibleAssetValue?: number;
+  freeCashFlowToFirm?: number;
+  [key: string]: string | number | undefined;
+};
+
+export type FmpGrowth = {
+  symbol: string;
+  date?: string;
+  fiscalYear?: string;
+  revenueGrowth?: number;
+  netIncomeGrowth?: number;
+  epsgrowth?: number;
+  freeCashFlowGrowth?: number;
+  bookValueperShareGrowth?: number;
+  dividendsPerShareGrowth?: number;
+  [key: string]: string | number | undefined;
+};
+
+export type FmpEtfHolding = {
+  symbol: string;
+  asset?: string;
+  name?: string;
+  weightPercentage?: number;
+  marketValue?: number;
+  sharesNumber?: number;
+};
+
+export type FmpEtfInfo = {
+  symbol: string;
+  name?: string;
+  expenseRatio?: number;
+  assetsUnderManagement?: number;
+  holdingsCount?: number;
+  assetClass?: string;
+  inceptionDate?: string;
+  nav?: number;
+};
+
+export type FmpEtfSector = {
+  symbol?: string;
+  sector: string;
+  weightPercentage: number;
+};
+
+export type FmpSectorPe = {
+  date?: string;
+  sector: string;
+  exchange?: string;
+  pe: number;
+};
+
 export type FmpEconEvent = {
   date: string;
   country?: string;
@@ -357,6 +439,14 @@ export const ALLOWED_FMP_PATHS = [
   "price-target-consensus",
   "ratings-snapshot",
   "market-risk-premium",
+  "owner-earnings",
+  "grades-consensus",
+  "key-metrics",
+  "financial-growth",
+  "etf/holdings",
+  "etf/info",
+  "etf/sector-weightings",
+  "sector-pe-snapshot",
 ] as const;
 
 export type AllowedFmpPath = (typeof ALLOWED_FMP_PATHS)[number];
