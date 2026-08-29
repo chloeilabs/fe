@@ -173,7 +173,7 @@ export function RiskView() {
         <CardHeader>
           <CardTitle>CAPM by name</CardTitle>
           <CardDescription>
-            OLS on aligned daily excess vs SPY. Newey–West t(α) uses Bartlett lags ⌊n^{1/3}⌋. Book α{" "}
+            OLS on aligned daily excess vs SPY. Newey–West t(α) uses Bartlett lags of floor of cube-root n. Book α{" "}
             {pct(annualizeAlpha(book.bookCapm.alpha), true)} annualized · IR{" "}
             {num(book.bookCapm.informationRatio * Math.sqrt(252), 2)}. Effective N {num(nEff, 2)}.
           </CardDescription>
@@ -235,8 +235,8 @@ export function RiskView() {
           <CardTitle>Range vol and Amihud</CardTitle>
           <CardDescription>
             Annualized close-to-close vs Parkinson, Garman–Klass, Rogers–Satchell, and Yang–Zhang on
-            historical-price-eod/full. Amihud = mean |r| / dollar volume. Roll s = 2√(−cov r_t r_{t−1}). 12–1 is
-            Pₜ₋₂₁ / Pₜ₋₂₅₂ − 1.
+            historical-price-eod/full. Amihud = mean |r| / dollar volume. Roll s = 2√(−cov of lag-1 returns). 12–1 is
+            P at t−21 over P at t−252 minus one.
           </CardDescription>
         </CardHeader>
         <CardContent>

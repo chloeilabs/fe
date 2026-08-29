@@ -54,7 +54,7 @@ export function neweyWest(y: number[], X: number[][], maxLag?: number): NeweyWes
     }
   }
 
-  const xtxInv = inverseSPD(multiply(transpose(rows), rows));
+  const xtxInv = inverseSPD(multiply(transpose(rows), rows), 0);
   const V = multiply(multiply(xtxInv, meat), xtxInv);
   return {
     beta,

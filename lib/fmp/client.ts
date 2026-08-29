@@ -162,8 +162,10 @@ function fromSample(path: AllowedFmpPath, params: Record<string, string>): unkno
       return symbol ? [sampleSharesFloat(symbol)].filter(Boolean) : [];
     case "enterprise-values":
       return symbol ? sampleEnterpriseValues(symbol) : [];
-    case "levered-discounted-cash-flow":
-      return symbol ? [sampleDcf(symbol)].filter(Boolean).map((row) => ({ ...row, dcf: row.dcf * 0.96 })) : [];
+    case "levered-discounted-cash-flow": {
+      const row = symbol ? sampleDcf(symbol) : null;
+      return row ? [{ ...row, dcf: row.dcf * 0.96 }] : [];
+    }
     case "dividends-calendar":
       return sampleDividendsCalendar();
     case "price-target-summary":

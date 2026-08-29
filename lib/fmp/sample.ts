@@ -751,7 +751,7 @@ export function sampleGeographicRevenue(symbol: string): FmpRevenueSegment[] {
   const spec = SPECS[symbol.toUpperCase()];
   if (!spec) return [];
   const total = (spec.cap ?? 1e12) * 0.08;
-  const data =
+  const data: Record<string, number> =
     symbol.toUpperCase() === "VXUS"
       ? { Japan: total * 0.18, Europe: total * 0.42, "Emerging markets": total * 0.28, Canada: total * 0.12 }
       : {
@@ -777,7 +777,7 @@ export function sampleProductRevenue(symbol: string): FmpRevenueSegment[] {
   const spec = SPECS[symbol.toUpperCase()];
   if (!spec) return [];
   const total = (spec.cap ?? 1e12) * 0.08;
-  const data = spec.etf
+  const data: Record<string, number> = spec.etf
     ? { Equity: total * 0.92, "Fixed income": total * 0.05, Cash: total * 0.03 }
     : {
         iPhone: total * 0.51,

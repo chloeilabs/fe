@@ -114,9 +114,9 @@ export function solveSPD(A: Matrix, b: Vector, eps = 1e-10): Vector {
   return cholSolve(cholesky(eps === 0 ? A : ridge(A, eps)), b);
 }
 
-export function inverseSPD(A: Matrix): Matrix {
+export function inverseSPD(A: Matrix, eps = 1e-10): Matrix {
   const n = A.length;
-  const L = cholesky(ridge(A));
+  const L = cholesky(eps === 0 ? A : ridge(A, eps));
   const I = identity(n);
   return transpose(I.map((_, j) => cholSolve(L, I[j]!)));
 }
