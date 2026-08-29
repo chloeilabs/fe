@@ -92,16 +92,18 @@ export function MarketsView() {
       fetchFmpOptional<FmpSectorPe[]>("sector-pe-snapshot", { date, exchange: "NASDAQ" }),
       fetchFmpOptional<FmpIndustryPe[]>("industry-pe-snapshot", { date, exchange: "NASDAQ" }),
       fetchFmpOptional<FmpIndustryPerf[]>("industry-performance-snapshot", { date, exchange: "NASDAQ" }),
-      fetchFmpOptional<FmpDividend[]>("dividends-calendar", { from: isoShift(-3), to: isoShift(45) }),
+      fetchFmpOptional<FmpDividend[]>("dividends-calendar", { from: isoShift(-3), to: isoShift(45), page: 0 }),
+      fetchFmpOptional<FmpDividend[]>("dividends-calendar", { from: isoShift(-3), to: isoShift(45), page: 1 }),
+      fetchFmpOptional<FmpDividend[]>("dividends-calendar", { from: isoShift(-3), to: isoShift(45), page: 2 }),
       fetchFmpOptional<FmpRatiosTtm[]>("ratios-ttm", { symbol: "SPY" }),
-    ]).then(([c, u, f, cal, pe, ind, perf, divs, spyRatios]) => {
+    ]).then(([c, u, f, cal, pe, ind, perf, div0, div1, div2, spyRatios]) => {
       setCpi(c?.[0] ?? null);
       setUnemp(u?.[0] ?? null);
       setFed(f?.[0] ?? null);
       setSectorPe(pe ?? []);
       setIndustryPe((ind ?? []).slice(0, 12));
       setIndustryPerf((perf ?? []).slice(0, 12));
-      setDivCal(divs ?? []);
+      setDivCal([...(div0 ?? []), ...(div1 ?? []), ...(div2 ?? [])]);
       const peTtm = Number(spyRatios?.[0]?.priceToEarningsRatioTTM);
       setSpyPe(Number.isFinite(peTtm) && peTtm > 0 ? peTtm : null);
       setEcon(

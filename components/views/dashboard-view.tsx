@@ -50,10 +50,13 @@ export function DashboardView() {
     const to = new Date();
     to.setUTCDate(to.getUTCDate() + 45);
     from.setUTCDate(from.getUTCDate() - 3);
-    fetchFmpOptional<FmpDividend[]>("dividends-calendar", {
-      from: from.toISOString().slice(0, 10),
-      to: to.toISOString().slice(0, 10),
-    }).then((rows) => setDivs(rows ?? []));
+    const fromStr = from.toISOString().slice(0, 10);
+    const toStr = to.toISOString().slice(0, 10);
+    Promise.all(
+      [0, 1, 2].map((page) =>
+        fetchFmpOptional<FmpDividend[]>("dividends-calendar", { from: fromStr, to: toStr, page }),
+      ),
+    ).then((pages) => setDivs(pages.flatMap((rows) => rows ?? [])));
   }, []);
   const bookDivs = divs.filter((d) => held.has(d.symbol)).slice(0, 6);
 
