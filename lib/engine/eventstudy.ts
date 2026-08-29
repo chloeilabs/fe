@@ -51,7 +51,7 @@ export function earningsCars(
   const out: CarPoint[] = [];
   for (const raw of eventDates) {
     const day = raw.slice(0, 10);
-    let idx = dates.findIndex((d) => d >= day);
+    const idx = dates.findIndex((d) => d >= day);
     if (idx < 0) continue;
     const lo = Math.max(0, idx - pre);
     const hi = Math.min(ar.length - 1, idx + post);

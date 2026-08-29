@@ -110,8 +110,8 @@ export function cholSolve(L: Matrix, b: Vector): Vector {
   return x;
 }
 
-export function solveSPD(A: Matrix, b: Vector): Vector {
-  return cholSolve(cholesky(ridge(A)), b);
+export function solveSPD(A: Matrix, b: Vector, eps = 1e-10): Vector {
+  return cholSolve(cholesky(eps === 0 ? A : ridge(A, eps)), b);
 }
 
 export function inverseSPD(A: Matrix): Matrix {

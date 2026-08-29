@@ -14,16 +14,15 @@ export type FactorResult = {
 export function olsMulti(y: number[], X: number[][]): { beta: number[]; r2: number; n: number } {
   const n = Math.min(y.length, X.length);
   const k = X[0]?.length ?? 0;
-  if (n < k + 2 || k === 0) {
+  if (n < k || k === 0) {
     return { beta: Array.from({ length: Math.max(k, 1) }, () => 0), r2: 0, n };
   }
   const rows = X.slice(0, n);
   const yy = y.slice(0, n);
   const xt = transpose(rows);
   const xtx = multiply(xt, rows);
-  for (let i = 0; i < k; i += 1) xtx[i]![i]! += 1e-10;
   const xty = mv(xt, yy);
-  const beta = solveSPD(xtx, xty);
+  const beta = solveSPD(xtx, xty, 0);
   const fitted = rows.map((row) => row.reduce((s, x, i) => s + x * (beta[i] ?? 0), 0));
   const my = mean(yy);
   const sst = yy.reduce((s, v) => s + (v - my) ** 2, 0);
