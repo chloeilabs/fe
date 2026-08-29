@@ -235,6 +235,93 @@ export type FmpCashFlow = {
   interestExpense?: number;
 };
 
+export type FmpBalanceSheet = {
+  symbol: string;
+  date?: string;
+  fiscalYear?: string;
+  period?: string;
+  cashAndCashEquivalents?: number;
+  cashAndShortTermInvestments?: number;
+  totalAssets?: number;
+  totalDebt?: number;
+  netDebt?: number;
+  totalStockholdersEquity?: number;
+  shortTermDebt?: number;
+  longTermDebt?: number;
+};
+
+export type FmpEstimate = {
+  symbol: string;
+  date?: string;
+  revenueAvg?: number;
+  revenueLow?: number;
+  revenueHigh?: number;
+  epsAvg?: number;
+  epsLow?: number;
+  epsHigh?: number;
+  ebitdaAvg?: number;
+  netIncomeAvg?: number;
+  numAnalystsRevenue?: number;
+  numAnalystsEps?: number;
+};
+
+export type FmpEarnings = {
+  symbol: string;
+  date: string;
+  epsActual?: number | null;
+  epsEstimated?: number | null;
+  revenueActual?: number | null;
+  revenueEstimated?: number | null;
+  lastUpdated?: string;
+};
+
+export type FmpPriceTarget = {
+  symbol: string;
+  targetHigh?: number;
+  targetLow?: number;
+  targetConsensus?: number;
+  targetMedian?: number;
+};
+
+export type FmpRating = {
+  symbol: string;
+  rating?: string;
+  overallScore?: number;
+  discountedCashFlowScore?: number;
+  returnOnEquityScore?: number;
+  returnOnAssetsScore?: number;
+  debtToEquityScore?: number;
+  priceToEarningsScore?: number;
+  priceToBookScore?: number;
+};
+
+export type FmpRiskPremium = {
+  country: string;
+  continent?: string;
+  countryRiskPremium?: number;
+  totalEquityRiskPremium?: number;
+};
+
+export type FmpEconPoint = {
+  name?: string;
+  date: string;
+  value: number;
+};
+
+export type FmpEconEvent = {
+  date: string;
+  country?: string;
+  event: string;
+  currency?: string;
+  previous?: number | null;
+  estimate?: number | null;
+  actual?: number | null;
+  impact?: string;
+  change?: number | null;
+  changePercentage?: number | null;
+  unit?: string;
+};
+
 export const ALLOWED_FMP_PATHS = [
   "quote",
   "quote-short",
@@ -260,8 +347,16 @@ export const ALLOWED_FMP_PATHS = [
   "stock-peers",
   "income-statement",
   "cash-flow-statement",
+  "balance-sheet-statement",
   "dividends",
   "economic-indicators",
+  "economic-calendar",
+  "analyst-estimates",
+  "earnings",
+  "earnings-calendar",
+  "price-target-consensus",
+  "ratings-snapshot",
+  "market-risk-premium",
 ] as const;
 
 export type AllowedFmpPath = (typeof ALLOWED_FMP_PATHS)[number];

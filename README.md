@@ -1,19 +1,26 @@
 # Compound
 
-A personal financial engineering desk for wealth growth. It marks your book to [Financial Modeling Prep](https://site.financialmodelingprep.com/api-docs.md) market data, then runs the compounding, allocation, and risk math that actually decides whether you get there.
+A personal financial-engineering workbench for wealth growth. It marks your book to [Financial Modeling Prep](https://site.financialmodelingprep.com/api-docs.md) market data, then runs the mean-variance, risk, valuation, and time-series math on that book.
+
+This is not a FIRE planner. `/planner` redirects to Optimize.
 
 ## What it does
 
-- **Desk** — net worth, daily P/L, allocation, FIRE progress, indexes, watchlist
-- **Book** — holdings, cost basis, cash, account sleeves (local to the browser)
-- **Plan** — inflation-adjusted projections, required savings, Coast FIRE, Monte Carlo fan, rebalance trades
-- **Research** — FMP quote, profile, DCF vs price, TTM ratios, Altman Z / Piotroski, financials, peers, news
+- **Desk** — net worth, daily P/L, Sharpe, 95% historical VaR, allocation vs GMV, tape, watchlist
+- **Book** — holdings, cost basis, cash, sleeves (local to the browser)
+- **Optimize** — GMV, max Sharpe, ERC, Black–Litterman, efficient frontier, dollar trades, Student-t wealth paths, ½-Kelly
+- **Lab** — GARCH(1,1) on the book, Nelson–Siegel on Treasuries, Engle–Granger cointegration, Brinson–Fachler vs policy, walk-forward EW/GMV/max-Sharpe/ERC
+- **Research** — quote, two-stage FCFF vs FMP DCF, TTM ratios, scores, analyst estimates, SUE, price targets, ratings, US ERP, financials, peers, news
 - **Screen** — `stable/company-screener` with quality / dividend / ETF presets
-- **Risk** — value-weighted vol, Sharpe/Sortino, max drawdown, beta vs SPY, correlation, effective N
-- **Tape** — indexes, sector snapshot, movers, Treasury curve, NASDAQ hours
+- **Risk** — hist / parametric / Cornish–Fisher VaR, EWMA vol, OLS CAPM, Kalman β vs SPY, PCA, correlation
+- **Tape** — indexes, sectors, movers, Nelson–Siegel overlay on the Treasury curve, US macro, economic calendar
 - **News** — book-specific and market-wide FMP stock news
 
 The FMP API key never leaves the server. The browser talks only to `/api/fmp`.
+
+## Engines
+
+Ledoit–Wolf covariance, GMV / max-Sharpe / ERC / Black–Litterman, historical and Cornish–Fisher VaR, CAPM + Kalman β, Jacobi PCA, two-stage FCFF, GARCH(1,1), Nelson–Siegel (Diebold–Li), Engle–Granger, Brinson–Fachler, walk-forward backtest, multivariate-t Monte Carlo, Kelly.
 
 ## Setup
 
@@ -24,12 +31,12 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Without a key the app runs in **sample mode** so the desk is still usable. Add `FMP_API_KEY` for live `https://financialmodelingprep.com/stable/` data.
+Without a key the app runs in **sample mode**. Add `FMP_API_KEY` for live `https://financialmodelingprep.com/stable/` data.
 
 ## Scripts
 
 - `npm run dev` — Next.js 16 (Turbopack)
-- `npm test` — wealth / risk / allocation engines
+- `npm test` — quant engine identity tests
 - `npm run build` — production build
 - `npm run lint` — ESLint
 

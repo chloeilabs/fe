@@ -24,7 +24,7 @@ const instrument = Instrument_Serif({
 export const metadata: Metadata = {
   title: "Compound — personal wealth desk",
   description:
-    "A quantitative financial-engineering desk on Financial Modeling Prep: mean-variance, risk parity, VaR, CAPM, PCA, and two-stage FCFF.",
+    "A quantitative financial-engineering desk on Financial Modeling Prep: mean-variance, GARCH, Nelson–Siegel, VaR, CAPM, PCA, and two-stage FCFF.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

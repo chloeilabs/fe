@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { annualizeAlpha, capm } from "@/lib/engine/capm";
+import { annualizeAlpha, capm, kalmanBeta } from "@/lib/engine/capm";
 import {
   covToCorr,
   ewmaCovariance,
@@ -149,6 +149,7 @@ export function useBookModel() {
     const cf = cornishFisherVaR(portClip, 0.95);
     const hist99 = historicalVaR(portClip, 0.99);
     const bookCapm = capm(portClip, mktClip);
+    const kalmanBetas = n > 8 ? kalmanBeta(portClip, mktClip) : [];
     const nameCapm = names.map((symbol) => ({
       symbol,
       ...capm(returns[symbol] ?? [], mktClip),
@@ -181,6 +182,7 @@ export function useBookModel() {
       cf,
       hist99,
       bookCapm,
+      kalmanBetas,
       nameCapm,
       pca,
       corr,
@@ -206,6 +208,7 @@ export function useBookModel() {
     weights,
     weightMap,
     setHoldings,
+    series: bundle.series,
     ...analytics,
   };
 }

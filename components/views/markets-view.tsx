@@ -1,14 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { DeltaFromPercent } from "@/components/delta";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { fetchFmp } from "@/lib/fmp/browser";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { fetchFmp, fetchFmpOptional } from "@/lib/fmp/browser";
 import { ClientOnly } from "@/lib/hooks/use-mounted";
-import type { FmpHours, FmpMover, FmpQuote, FmpSector, FmpTreasury } from "@/lib/fmp/types";
+import { curvePoints, fitNelsonSiegel, treasuryToCurve } from "@/lib/engine/nelson-siegel";
+import type {
+  FmpEconEvent,
+  FmpEconPoint,
+  FmpHours,
+  FmpMover,
+  FmpQuote,
+  FmpSector,
+  FmpTreasury,
+} from "@/lib/fmp/types";
 import { money, num } from "@/lib/format";
 import { useQuotes } from "@/lib/hooks/use-quotes";
 
@@ -20,6 +30,12 @@ function lastWeekday() {
   return d.toISOString().slice(0, 10);
 }
 
+function isoShift(days: number) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 export function MarketsView() {
   const { quotes } = useQuotes(INDEXES);
   const [sectors, setSectors] = useState<FmpSector[]>([]);
@@ -28,6 +44,10 @@ export function MarketsView() {
   const [actives, setActives] = useState<FmpMover[]>([]);
   const [treasury, setTreasury] = useState<FmpTreasury | null>(null);
   const [hours, setHours] = useState<FmpHours | null>(null);
+  const [cpi, setCpi] = useState<FmpEconPoint | null>(null);
+  const [unemp, setUnemp] = useState<FmpEconPoint | null>(null);
+  const [fed, setFed] = useState<FmpEconPoint | null>(null);
+  const [econ, setEcon] = useState<FmpEconEvent[]>([]);
 
   useEffect(() => {
     const date = lastWeekday();
@@ -46,19 +66,33 @@ export function MarketsView() {
       setTreasury(t.data?.[0] ?? null);
       setHours(h.data?.[0] ?? null);
     });
+    Promise.all([
+      fetchFmpOptional<FmpEconPoint[]>("economic-indicators", { name: "CPI" }),
+      fetchFmpOptional<FmpEconPoint[]>("economic-indicators", { name: "unemploymentRate" }),
+      fetchFmpOptional<FmpEconPoint[]>("economic-indicators", { name: "federalFunds" }),
+      fetchFmpOptional<FmpEconEvent[]>("economic-calendar", {
+        country: "US",
+        from: isoShift(-10),
+        to: isoShift(21),
+      }),
+    ]).then(([c, u, f, cal]) => {
+      setCpi(c?.[0] ?? null);
+      setUnemp(u?.[0] ?? null);
+      setFed(f?.[0] ?? null);
+      setEcon((cal ?? []).slice(0, 10));
+    });
   }, []);
 
-  const curve = treasury
-    ? [
-        { tenor: "3M", yield: treasury.month3 },
-        { tenor: "6M", yield: treasury.month6 },
-        { tenor: "1Y", yield: treasury.year1 },
-        { tenor: "2Y", yield: treasury.year2 },
-        { tenor: "5Y", yield: treasury.year5 },
-        { tenor: "10Y", yield: treasury.year10 },
-        { tenor: "30Y", yield: treasury.year30 },
-      ]
-    : [];
+  const curve = useMemo(() => (treasury ? treasuryToCurve(treasury) : []), [treasury]);
+  const ns = useMemo(
+    () => (curve.length >= 4 ? fitNelsonSiegel(curve.map((c) => c.tau), curve.map((c) => c.yield)) : null),
+    [curve],
+  );
+  const nsChart = useMemo(() => {
+    if (!ns || !curve.length) return curve.map((c) => ({ tenor: c.tenor, observed: c.yield, fitted: c.yield }));
+    const dense = curvePoints(ns, curve.map((c) => c.tau));
+    return curve.map((c, i) => ({ tenor: c.tenor, observed: c.yield, fitted: dense[i]?.yield ?? c.yield }));
+  }, [curve, ns]);
 
   return (
     <div className="space-y-6">
@@ -95,20 +129,72 @@ export function MarketsView() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Treasury curve</CardTitle>
-            <CardDescription>{treasury?.date}</CardDescription>
+            <CardTitle>Treasury + Nelson–Siegel</CardTitle>
+            <CardDescription>
+              {treasury?.date}
+              {ns ? ` · β0 ${num(ns.beta0, 2)} λ ${num(ns.lambda, 2)} RMSE ${num(ns.rmse, 3)}` : ""}
+            </CardDescription>
           </CardHeader>
           <CardContent className="h-56">
             <ClientOnly fallback={<div className="h-full rounded-lg bg-muted/30" />}>
             <ResponsiveContainer initialDimension={{ width: 480, height: 220 }}>
-              <BarChart data={curve}>
-                <XAxis dataKey="tenor" />
-                <YAxis />
+              <LineChart data={nsChart}>
+                <XAxis dataKey="tenor" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} width={36} />
                 <Tooltip />
-                <Bar dataKey="yield" fill="#d4b483" radius={[4, 4, 0, 0]} />
-              </BarChart>
+                <Line type="monotone" dataKey="observed" name="FMP" stroke="#d4b483" strokeWidth={1.6} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="fitted" name="NS" stroke="#8a9ba8" strokeWidth={1.4} strokeDasharray="4 4" dot={false} />
+              </LineChart>
             </ResponsiveContainer>
             </ClientOnly>
+          </CardContent>
+        </Card>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>US macro</CardTitle>
+            <CardDescription>FMP economic-indicators</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <MacroRow label="CPI" point={cpi} digits={1} />
+            <MacroRow label="Unemployment" point={unemp} digits={2} suffix="%" />
+            <MacroRow label="Fed funds" point={fed} digits={2} suffix="%" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Economic calendar</CardTitle>
+            <CardDescription>US releases · economic-calendar</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {econ.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No calendar rows in this window.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>When</TableHead>
+                    <TableHead>Event</TableHead>
+                    <TableHead className="text-right">Est.</TableHead>
+                    <TableHead className="text-right">Actual</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {econ.map((row, i) => (
+                    <TableRow key={`${row.date}-${row.event}-${i}`}>
+                      <TableCell className="whitespace-nowrap font-mono text-xs">{row.date.slice(0, 10)}</TableCell>
+                      <TableCell>
+                        <div>{row.event}</div>
+                        <div className="text-xs text-muted-foreground">{row.impact}</div>
+                      </TableCell>
+                      <TableCell className="text-right font-mono">{row.estimate ?? "—"}</TableCell>
+                      <TableCell className="text-right font-mono">{row.actual ?? "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -151,5 +237,29 @@ function MoverCard({ title, rows }: { title: string; rows: FmpMover[] }) {
         ))}
       </CardContent>
     </Card>
+  );
+}
+
+function MacroRow({
+  label,
+  point,
+  digits,
+  suffix = "",
+}: {
+  label: string;
+  point: FmpEconPoint | null;
+  digits: number;
+  suffix?: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <div>
+        <div>{label}</div>
+        <div className="text-xs text-muted-foreground">{point?.date ?? "—"}</div>
+      </div>
+      <div className="font-mono tabular-nums">
+        {point ? `${num(point.value, digits)}${suffix}` : "—"}
+      </div>
+    </div>
   );
 }

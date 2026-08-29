@@ -2,6 +2,11 @@ import { mulberry32 } from "@/lib/engine/stats";
 import type {
   FmpDcf,
   FmpCashFlow,
+  FmpBalanceSheet,
+  FmpEarnings,
+  FmpEconEvent,
+  FmpEconPoint,
+  FmpEstimate,
   FmpHours,
   FmpIncome,
   FmpLightBar,
@@ -10,9 +15,12 @@ import type {
   FmpNews,
   FmpPeer,
   FmpPriceChange,
+  FmpPriceTarget,
   FmpProfile,
   FmpQuote,
+  FmpRating,
   FmpRatiosTtm,
+  FmpRiskPremium,
   FmpScore,
   FmpScreenerRow,
   FmpSearchHit,
@@ -344,6 +352,136 @@ export function sampleCashFlow(symbol: string): FmpCashFlow[] {
     operatingCashFlow: fcf * 1.35 * (1 - i * 0.04),
     capitalExpenditure: -fcf * 0.35,
   }));
+}
+
+export function sampleBalanceSheet(symbol: string): FmpBalanceSheet[] {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return [];
+  const assets = (spec.cap ?? 1e11) * 0.35;
+  const debt = assets * 0.31;
+  const cash = assets * 0.1;
+  return [2025, 2024, 2023].map((year, i) => ({
+    symbol: symbol.toUpperCase(),
+    date: `${year}-09-27`,
+    fiscalYear: String(year),
+    period: "FY",
+    cashAndCashEquivalents: cash * (1 - i * 0.03),
+    cashAndShortTermInvestments: cash * 1.5 * (1 - i * 0.03),
+    totalAssets: assets * (1 - i * 0.04),
+    totalDebt: debt * (1 - i * 0.02),
+    netDebt: (debt - cash) * (1 - i * 0.02),
+    totalStockholdersEquity: (assets - debt) * (1 - i * 0.05),
+    shortTermDebt: debt * 0.18,
+    longTermDebt: debt * 0.7,
+  }));
+}
+
+export function sampleEstimates(symbol: string): FmpEstimate[] {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return [];
+  const eps = spec.etf ? 12 : 7.4;
+  const rev = spec.etf ? 0 : 420e9;
+  return [2026, 2027, 2028].map((year, i) => ({
+    symbol: symbol.toUpperCase(),
+    date: `${year}-09-27`,
+    revenueAvg: rev * (1 + 0.08 * (i + 1)),
+    revenueLow: rev * (1 + 0.05 * (i + 1)),
+    revenueHigh: rev * (1 + 0.12 * (i + 1)),
+    epsAvg: eps * (1 + 0.09 * (i + 1)),
+    epsLow: eps * (1 + 0.04 * (i + 1)),
+    epsHigh: eps * (1 + 0.14 * (i + 1)),
+    ebitdaAvg: rev * 0.34 * (1 + 0.07 * (i + 1)),
+    netIncomeAvg: rev * 0.25 * (1 + 0.08 * (i + 1)),
+    numAnalystsRevenue: 18 - i,
+    numAnalystsEps: 22 - i,
+  }));
+}
+
+export function sampleEarnings(symbol: string): FmpEarnings[] {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return [];
+  const base = spec.etf ? 1.8 : 1.52;
+  return [0, 1, 2, 3, 4, 5].map((i) => {
+    const d = new Date();
+    d.setUTCMonth(d.getUTCMonth() - i * 3);
+    const est = base * (1 - i * 0.03);
+    const beat = i % 2 === 0 ? 0.08 : -0.02;
+    return {
+      symbol: symbol.toUpperCase(),
+      date: d.toISOString().slice(0, 10),
+      epsActual: Number((est + beat).toFixed(2)),
+      epsEstimated: Number(est.toFixed(2)),
+      revenueActual: spec.etf ? null : 94e9 * (1 - i * 0.02),
+      revenueEstimated: spec.etf ? null : 91e9 * (1 - i * 0.02),
+    };
+  });
+}
+
+export function samplePriceTarget(symbol: string): FmpPriceTarget | null {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return null;
+  return {
+    symbol: symbol.toUpperCase(),
+    targetHigh: spec.price * 1.22,
+    targetLow: spec.price * 0.78,
+    targetConsensus: spec.price * 1.04,
+    targetMedian: spec.price * 1.05,
+  };
+}
+
+export function sampleRating(symbol: string): FmpRating | null {
+  const spec = SPECS[symbol.toUpperCase()];
+  if (!spec) return null;
+  return {
+    symbol: symbol.toUpperCase(),
+    rating: spec.etf ? "A" : "B",
+    overallScore: spec.etf ? 4 : 3,
+    discountedCashFlowScore: 3,
+    returnOnEquityScore: spec.etf ? 4 : 5,
+    returnOnAssetsScore: 4,
+    debtToEquityScore: spec.etf ? 4 : 1,
+    priceToEarningsScore: 2,
+    priceToBookScore: 1,
+  };
+}
+
+export function sampleRiskPremium(): FmpRiskPremium[] {
+  return [
+    { country: "United States", continent: "North America", countryRiskPremium: 0, totalEquityRiskPremium: 5.0 },
+    { country: "Germany", continent: "Europe", countryRiskPremium: 0.64, totalEquityRiskPremium: 5.64 },
+    { country: "Japan", continent: "Asia", countryRiskPremium: 0.91, totalEquityRiskPremium: 5.91 },
+    { country: "United Kingdom", continent: "Europe", countryRiskPremium: 0.91, totalEquityRiskPremium: 5.91 },
+  ];
+}
+
+export function sampleEconIndicator(name: string): FmpEconPoint[] {
+  const today = new Date();
+  const seed =
+    name === "CPI" ? 318.2 : name === "unemploymentRate" ? 4.2 : name === "federalFunds" ? 4.33 : 31422;
+  return [0, 1, 2, 3, 4, 5].map((i) => {
+    const d = new Date(today);
+    d.setUTCMonth(d.getUTCMonth() - i);
+    return { name, date: d.toISOString().slice(0, 10), value: seed * (1 - i * 0.004) };
+  });
+}
+
+export function sampleEconCalendar(): FmpEconEvent[] {
+  const day = (offset: number) => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + offset);
+    return `${d.toISOString().slice(0, 10)} 08:30:00`;
+  };
+  return [
+    { date: day(2), country: "US", event: "CPI YoY", currency: "USD", previous: 2.7, estimate: 2.8, actual: null, impact: "High", unit: "%" },
+    { date: day(5), country: "US", event: "Nonfarm Payrolls", currency: "USD", previous: 147, estimate: 160, actual: null, impact: "High", unit: "k" },
+    { date: day(-2), country: "US", event: "Initial Jobless Claims", currency: "USD", previous: 221, estimate: 220, actual: 219, impact: "Medium", change: -2, unit: "k" },
+    { date: day(9), country: "US", event: "FOMC Rate Decision", currency: "USD", previous: 4.5, estimate: 4.5, actual: null, impact: "High", unit: "%" },
+    { date: day(1), country: "US", event: "Retail Sales MoM", currency: "USD", previous: 0.4, estimate: 0.3, actual: null, impact: "Medium", unit: "%" },
+  ];
+}
+
+export function sampleEarningsCalendar(): FmpEarnings[] {
+  return sampleEarnings("AAPL").slice(0, 2).concat(sampleEarnings("MSFT").slice(0, 1));
 }
 
 export const SAMPLE_UNIVERSE = Object.keys(SPECS);

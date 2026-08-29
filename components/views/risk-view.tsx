@@ -1,5 +1,7 @@
 "use client";
 
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+
 import { Kpi } from "@/components/kpi";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -8,6 +10,7 @@ import { calmarRatio, effectiveN, maxDrawdown, sortinoRatio } from "@/lib/engine
 import { dollarVaR } from "@/lib/engine/var";
 import { money, num, pct } from "@/lib/format";
 import { useBookModel } from "@/lib/hooks/use-book-model";
+import { ClientOnly } from "@/lib/hooks/use-mounted";
 
 export function RiskView() {
   const book = useBookModel();
@@ -19,6 +22,15 @@ export function RiskView() {
   const dd = maxDrawdown(wealthBars);
   const nEff = effectiveN(book.weights);
   const rf = 0.043;
+  const kalmanChart = (() => {
+    const path = book.kalmanBetas;
+    if (path.length < 2) return [];
+    const step = Math.max(1, Math.floor(path.length / 140));
+    return path
+      .map((beta, i) => ({ t: i, beta }))
+      .filter((_, i, arr) => i % step === 0 || i === arr.length - 1);
+  })();
+  const lastKalman = book.kalmanBetas[book.kalmanBetas.length - 1];
 
   return (
     <div className="space-y-6">
@@ -27,7 +39,7 @@ export function RiskView() {
         <h1 className="font-heading text-4xl tracking-tight">VaR, factors, and CAPM</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
           Historical, Gaussian, and Cornish–Fisher VaR on the value-weighted book; EWMA (λ=0.94) vol; Jacobi PCA on
-          the shrunk correlation matrix; OLS α/β versus SPY.
+          the shrunk correlation matrix; OLS α/β versus SPY; scalar Kalman β.
         </p>
       </header>
       {book.error ? <p className="text-sm text-destructive">{book.error}</p> : null}
@@ -92,6 +104,27 @@ export function RiskView() {
               ))}
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Kalman β vs SPY</CardTitle>
+          <CardDescription>
+            Scalar filter on r_book,t = β_t r_SPY,t + ε. Process variance 10⁻⁵, observation 10⁻⁴. Last β{" "}
+            {num(lastKalman, 2)} vs OLS {num(book.bookCapm.beta, 2)}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="h-56">
+          <ClientOnly fallback={<div className="h-full rounded-lg bg-muted/30" />}>
+            <ResponsiveContainer initialDimension={{ width: 800, height: 220 }}>
+              <LineChart data={kalmanChart}>
+                <XAxis dataKey="t" hide />
+                <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11 }} width={40} />
+                <Tooltip formatter={(v) => num(Number(v), 3)} />
+                <Line type="monotone" dataKey="beta" stroke="#d4b483" dot={false} strokeWidth={1.6} />
+              </LineChart>
+            </ResponsiveContainer>
+          </ClientOnly>
         </CardContent>
       </Card>
       <div className="grid gap-4 lg:grid-cols-2">

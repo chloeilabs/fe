@@ -16,3 +16,16 @@ export async function fetchFmp<T>(path: string, params: Record<string, string | 
   if (!res.ok) throw new Error(json.error || "Market data request failed");
   return json;
 }
+
+/** Live FMP plans omit some endpoints; never fail a page for an optional surface. */
+export async function fetchFmpOptional<T>(
+  path: string,
+  params: Record<string, string | number | boolean | undefined> = {},
+): Promise<T | null> {
+  try {
+    const json = await fetchFmp<T>(path, params);
+    return json.data ?? null;
+  } catch {
+    return null;
+  }
+}

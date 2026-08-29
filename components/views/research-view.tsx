@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Star } from "lucide-react";
@@ -13,21 +13,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { fetchFmp } from "@/lib/fmp/browser";
+import { fetchFmp, fetchFmpOptional } from "@/lib/fmp/browser";
 import { ClientOnly } from "@/lib/hooks/use-mounted";
+import { standardizedSurprises } from "@/lib/engine/attribution";
 import { twoStageFcff, waccFromCapm } from "@/lib/engine/dcf";
 import type {
+  FmpBalanceSheet,
   FmpCashFlow,
   FmpDcf,
+  FmpEarnings,
+  FmpEstimate,
   FmpIncome,
   FmpLightBar,
   FmpMetricsTtm,
   FmpNews,
   FmpPeer,
   FmpPriceChange,
+  FmpPriceTarget,
   FmpProfile,
   FmpQuote,
+  FmpRating,
   FmpRatiosTtm,
+  FmpRiskPremium,
   FmpScore,
 } from "@/lib/fmp/types";
 import { money, num, pct } from "@/lib/format";
@@ -40,7 +47,8 @@ export function ResearchHome() {
         <p className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">Research</p>
         <h1 className="font-heading text-4xl tracking-tight">Look through the security</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Quotes, two-stage FCFF, TTM ratios, scores, and filings-grade financials from FMP stable endpoints.
+          Quotes, two-stage FCFF, TTM ratios, scores, analyst estimates, SUE, and price targets from FMP stable
+          endpoints.
         </p>
       </header>
       <SymbolSearch autoFocus />
@@ -63,6 +71,13 @@ export function ResearchView({ symbol }: { symbol: string }) {
   const [news, setNews] = useState<FmpNews[]>([]);
   const [peers, setPeers] = useState<FmpPeer[]>([]);
   const [change, setChange] = useState<FmpPriceChange | null>(null);
+  const [balance, setBalance] = useState<FmpBalanceSheet[]>([]);
+  const [estimates, setEstimates] = useState<FmpEstimate[]>([]);
+  const [earnings, setEarnings] = useState<FmpEarnings[]>([]);
+  const [target, setTarget] = useState<FmpPriceTarget | null>(null);
+  const [rating, setRating] = useState<FmpRating | null>(null);
+  const [erpUs, setErpUs] = useState<number | null>(null);
+  const erpSeeded = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [dcfInputs, setDcfInputs] = useState({
     gHigh: 8,
@@ -106,6 +121,23 @@ export function ResearchView({ symbol }: { symbol: string }) {
         setPeers(Array.isArray(pr.data) ? pr.data : []);
         setChange(ch.data?.[0] ?? null);
         setError(null);
+
+        const [est, earn, tgt, rat, prem, bs] = await Promise.all([
+          fetchFmpOptional<FmpEstimate[]>("analyst-estimates", { symbol, period: "annual", limit: 6 }),
+          fetchFmpOptional<FmpEarnings[]>("earnings", { symbol, limit: 12 }),
+          fetchFmpOptional<FmpPriceTarget[]>("price-target-consensus", { symbol }),
+          fetchFmpOptional<FmpRating[]>("ratings-snapshot", { symbol }),
+          fetchFmpOptional<FmpRiskPremium[]>("market-risk-premium"),
+          fetchFmpOptional<FmpBalanceSheet[]>("balance-sheet-statement", { symbol, period: "annual", limit: 3 }),
+        ]);
+        if (cancelled) return;
+        setEstimates(est ?? []);
+        setEarnings(earn ?? []);
+        setTarget(tgt?.[0] ?? null);
+        setRating(rat?.[0] ?? null);
+        setBalance(bs ?? []);
+        const us = (prem ?? []).find((row) => /united states/i.test(row.country));
+        if (us?.totalEquityRiskPremium != null) setErpUs(us.totalEquityRiskPremium);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Research load failed");
       }
@@ -115,6 +147,12 @@ export function ResearchView({ symbol }: { symbol: string }) {
       cancelled = true;
     };
   }, [symbol]);
+
+  useEffect(() => {
+    if (erpSeeded.current || erpUs == null) return;
+    erpSeeded.current = true;
+    setDcfInputs((prev) => ({ ...prev, erp: erpUs }));
+  }, [erpUs]);
 
   const price = quote?.price ?? profile?.price ?? 0;
   const intrinsic = dcf?.dcf ?? 0;
@@ -129,7 +167,12 @@ export function ResearchView({ symbol }: { symbol: string }) {
     (metrics?.marketCap && price ? Number(metrics.marketCap) / price : 0);
   const ev = Number(metrics?.enterpriseValueTTM) || 0;
   const mcap = Number(metrics?.marketCap) || 0;
-  const netDebt = ev && mcap ? ev - mcap : 0;
+  const netDebt =
+    balance[0]?.netDebt != null
+      ? Number(balance[0].netDebt)
+      : ev && mcap
+        ? ev - mcap
+        : 0;
   const equityWeight = ev > 0 ? mcap / ev : 1;
   const wacc = waccFromCapm({
     rf: dcfInputs.rf / 100,
@@ -151,6 +194,16 @@ export function ResearchView({ symbol }: { symbol: string }) {
       })
     : null;
   const modelMos = modelDcf && price ? modelDcf.perShare / price - 1 : null;
+  const sue = standardizedSurprises(
+    earnings.map((row) => ({
+      date: row.date,
+      actual: row.epsActual ?? null,
+      estimate: row.epsEstimated ?? null,
+    })),
+  );
+  const lastSue = sue[0];
+  const targetUpside =
+    target?.targetConsensus && price ? target.targetConsensus / price - 1 : null;
 
   return (
     <div className="space-y-6">
@@ -205,6 +258,32 @@ export function ResearchView({ symbol }: { symbol: string }) {
         <Stat label="P/E TTM" value={num(Number(ratios?.priceToEarningsRatioTTM), 1)} hint={`FCF yield ${pct(Number(metrics?.freeCashFlowYieldTTM) || 0, false)}`} />
         <Stat label="Scores" value={`Z ${num(scores?.altmanZScore, 1)}`} hint={`Piotroski ${scores?.piotroskiScore ?? "—"}`} />
       </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat
+          label="Consensus target"
+          value={money(target?.targetConsensus)}
+          hint={
+            targetUpside == null
+              ? `high ${money(target?.targetHigh)} · low ${money(target?.targetLow)}`
+              : `${targetUpside >= 0 ? "Upside" : "Downside"} ${pct(Math.abs(targetUpside), false)}`
+          }
+        />
+        <Stat
+          label="FMP rating"
+          value={rating?.rating ?? "—"}
+          hint={`overall ${rating?.overallScore ?? "—"} · DCF ${rating?.discountedCashFlowScore ?? "—"}`}
+        />
+        <Stat
+          label="US ERP"
+          value={erpUs == null ? "—" : `${num(erpUs, 2)}%`}
+          hint="market-risk-premium · seeds WACC"
+        />
+        <Stat
+          label="Last SUE"
+          value={lastSue ? num(lastSue.sue, 2) : "—"}
+          hint={lastSue ? `surprise ${num(lastSue.surprise, 2)} · ${lastSue.date}` : "Need actual vs estimate"}
+        />
+      </div>
 
       <Card>
         <CardHeader>
@@ -247,13 +326,19 @@ export function ResearchView({ symbol }: { symbol: string }) {
               <span className="font-mono">{money(fcff, true)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Net debt (EV − mkt cap)</span>
+              <span className="text-muted-foreground">Net debt (balance sheet)</span>
               <span className="font-mono">{money(netDebt, true)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">WACC</span>
               <span className="font-mono">{pct(wacc, false)}</span>
             </div>
+            {erpUs != null ? (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">FMP US equity risk premium</span>
+                <span className="font-mono">{num(erpUs, 2)}%</span>
+              </div>
+            ) : null}
             <div className="flex justify-between">
               <span className="text-muted-foreground">PV explicit + PV terminal</span>
               <span className="font-mono">
@@ -311,6 +396,78 @@ export function ResearchView({ symbol }: { symbol: string }) {
                 <DeltaFromPercent value={change?.[k]} />
               </div>
             ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Analyst estimates</CardTitle>
+            <CardDescription>FMP analyst-estimates, annual. Consensus revenue and EPS.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {estimates.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No estimates for this symbol.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Rev avg</TableHead>
+                    <TableHead className="text-right">EPS avg</TableHead>
+                    <TableHead className="text-right"># EPS</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {estimates.slice(0, 6).map((row, i) => (
+                    <TableRow key={`${row.date ?? "est"}-${i}`}>
+                      <TableCell>{row.date}</TableCell>
+                      <TableCell className="text-right font-mono">{money(row.revenueAvg, true)}</TableCell>
+                      <TableCell className="text-right font-mono">{num(row.epsAvg, 2)}</TableCell>
+                      <TableCell className="text-right font-mono">{row.numAnalystsEps ?? "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Earnings &amp; SUE</CardTitle>
+            <CardDescription>
+              Standardized unexpected earnings: (actual − estimate) / σ of the surprise series. FMP earnings.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {sue.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No EPS actuals vs estimates yet.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Actual</TableHead>
+                    <TableHead className="text-right">Est.</TableHead>
+                    <TableHead className="text-right">SUE</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sue.slice(0, 8).map((row) => {
+                    const raw = earnings.find((e) => e.date === row.date);
+                    return (
+                      <TableRow key={row.date}>
+                        <TableCell>{row.date}</TableCell>
+                        <TableCell className="text-right font-mono">{num(raw?.epsActual, 2)}</TableCell>
+                        <TableCell className="text-right font-mono">{num(raw?.epsEstimated, 2)}</TableCell>
+                        <TableCell className="text-right font-mono">{num(row.sue, 2)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

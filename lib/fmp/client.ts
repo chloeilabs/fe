@@ -1,8 +1,14 @@
 import "server-only";
 
 import {
+  sampleBalanceSheet,
   sampleCashFlow,
   sampleDcf,
+  sampleEarnings,
+  sampleEarningsCalendar,
+  sampleEconCalendar,
+  sampleEconIndicator,
+  sampleEstimates,
   sampleHistory,
   sampleHours,
   sampleIncome,
@@ -11,10 +17,13 @@ import {
   sampleNews,
   samplePeers,
   samplePriceChange,
+  samplePriceTarget,
   sampleProfile,
   sampleQuote,
   sampleQuotes,
+  sampleRating,
   sampleRatios,
+  sampleRiskPremium,
   sampleScores,
   sampleScreener,
   sampleSearch,
@@ -103,10 +112,26 @@ function fromSample(path: AllowedFmpPath, params: Record<string, string>): unkno
       return symbol ? sampleIncome(symbol) : [];
     case "cash-flow-statement":
       return symbol ? sampleCashFlow(symbol) : [];
+    case "balance-sheet-statement":
+      return symbol ? sampleBalanceSheet(symbol) : [];
     case "dividends":
       return [];
     case "economic-indicators":
-      return [{ name: params.name ?? "CPI", date: new Date().toISOString().slice(0, 10), value: 318.2 }];
+      return sampleEconIndicator(params.name ?? "CPI");
+    case "economic-calendar":
+      return sampleEconCalendar();
+    case "analyst-estimates":
+      return symbol ? sampleEstimates(symbol) : [];
+    case "earnings":
+      return symbol ? sampleEarnings(symbol) : [];
+    case "earnings-calendar":
+      return sampleEarningsCalendar();
+    case "price-target-consensus":
+      return symbol ? [samplePriceTarget(symbol)].filter(Boolean) : [];
+    case "ratings-snapshot":
+      return symbol ? [sampleRating(symbol)].filter(Boolean) : [];
+    case "market-risk-premium":
+      return sampleRiskPremium();
     default:
       return [];
   }
