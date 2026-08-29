@@ -13,7 +13,7 @@ This is not a FIRE planner. `/planner` redirects to Optimize.
 - **Research** — quote, two-stage FCFF vs FMP DCF and levered DCF, residual income, Gordon DPS, owner earnings, float, enterprise value, geographic/product HHI, historical market-cap CAGR, grades, financial growth, SUE, market-adjusted earnings CAR, price-target path, ratings, US ERP, sector- and industry-relative P/E
 - **Screen** — `stable/company-screener` with quality / dividend / ETF presets
 - **Risk** — hist / parametric / Cornish–Fisher VaR, EWMA vol, Parkinson / Garman–Klass / Yang–Zhang range vol, Amihud, Roll implied spread, 12–1 momentum, Newey–West t(α), OLS CAPM, Kalman β vs SPY, Fama–French 3-factor (IWM/IWD/IWF), PCA, correlation
-- **Tape** — indexes, sectors, sector and industry P/E, industry tape, Fed-model earnings-yield gap (SPY E/P vs 10y), book dividend calendar, movers, Nelson–Siegel overlay on the Treasury curve, US macro, economic calendar
+- **Tape** — indexes, sectors, sector and industry P/E, industry tape, Fed-model earnings-yield gap (NASDAQ sector E/P vs 10y), book dividend calendar, movers, Nelson–Siegel overlay on the Treasury curve, US macro, economic calendar
 - **News** — book-specific and market-wide FMP stock news
 
 The FMP API key never leaves the server. The browser talks only to `/api/fmp`.

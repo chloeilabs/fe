@@ -171,7 +171,11 @@ export function ResearchView({ symbol }: { symbol: string }) {
           fetchFmpOptional<FmpPriceTargetSummary[]>("price-target-summary", { symbol }),
           fetchFmpOptional<FmpRevenueSegment[]>("revenue-geographic-segmentation", { symbol, period: "annual" }),
           fetchFmpOptional<FmpRevenueSegment[]>("revenue-product-segmentation", { symbol, period: "annual" }),
-          fetchFmpOptional<FmpMarketCap[]>("historical-market-capitalization", { symbol, limit: 260 }),
+          fetchFmpOptional<FmpMarketCap[]>("historical-market-capitalization", {
+            symbol,
+            limit: 260,
+            from: new Date(Date.now() - 370 * 86400000).toISOString().slice(0, 10),
+          }),
         ]);
         if (cancelled) return;
         setEstimates(est ?? []);
