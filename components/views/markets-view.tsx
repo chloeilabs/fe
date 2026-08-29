@@ -79,7 +79,16 @@ export function MarketsView() {
       setCpi(c?.[0] ?? null);
       setUnemp(u?.[0] ?? null);
       setFed(f?.[0] ?? null);
-      setEcon((cal ?? []).slice(0, 10));
+      setEcon(
+        (cal ?? [])
+          .slice()
+          .sort((a, b) => {
+            const rank = (x: string | undefined) =>
+              /high/i.test(x ?? "") ? 0 : /medium/i.test(x ?? "") ? 1 : 2;
+            return rank(a.impact) - rank(b.impact) || a.date.localeCompare(b.date);
+          })
+          .slice(0, 12),
+      );
     });
   }, []);
 
